@@ -37,6 +37,9 @@ private:
   String *get_ffi_type(Node *n, SwigType *ty);
   String *convert_literal(String *num_param, String *type);
   String *strip_parens(String *string);
+  String *stringOfFunction(Node *n, int indent);
+  String *stringOfUnion(Node *n, int indent);
+  void writeIndent(String *out, int indent);
   int extern_all_flag;
   int generate_typedef_flag;
   int is_function;
@@ -116,42 +119,20 @@ int RACKET::top(Node *n) {
 int RACKET::functionWrapper(Node *n) {
   is_function = 1;
   String *storage = Getattr(n, "storage");
+
+  /*
   if (!extern_all_flag && (!storage || (!Swig_storage_isextern(n) && !Swig_storage_isexternc(n))))
     return SWIG_OK;
+  */
 
   String *func_name = Getattr(n, "sym:name");
 
-  ParmList *pl = Getattr(n, "parms");
-
-  int argnum = 0, first = 1;
-
   Append(entries, func_name);
 
+  String *expr = stringOfFunction(n, 2);
   Printf(f_rkt, "(define-foreign %s\n", func_name);
-  Printf(f_rkt, "  (_fun ");
-
-  for (Parm *p = pl; p; p = nextSibling(p), argnum++) {
-    String *argname = Getattr(p, "name");
-    String *ffitype = get_ffi_type(n, Getattr(p, "type"));
-    int tempargname = 0;
-
-    if (!argname) {
-      argname = NewStringf("arg%d", argnum);
-      tempargname = 1;
-    }
-
-    Printf(f_rkt, "[%s : %s]%s\n", argname, ffitype, "        ");
-    first = 0;
-
-    Delete(ffitype);
-    if (tempargname)
-      Delete(argname);
-  }
-  String *ffitype = get_ffi_type(n, Getattr(n, "type"));
-  Printf(f_rkt, "-> %s)", ffitype);
-
-  // FIXME: use #:c-id for overridden name
-  Printf(f_rkt, ")\n\n");
+  Printf(f_rkt, "  %s)\n\n", expr);
+  Delete(expr);
 
   return SWIG_OK;
 }
@@ -205,10 +186,17 @@ int RACKET::enumDeclaration(Node *n) {
   Printf(f_rkt, "(define _%s\n", name);
   Printf(f_rkt, "  (_enum '(");
 
+  int first = 1;
+
   for (Node *c = firstChild(n); c; c = nextSibling(c)) {
     String *slot_name = Getattr(c, "name");
     String *value = Getattr(c, "enumvalue");
-    Printf(f_rkt, "%s = %s ", slot_name, value);
+    if (!first) { Printf(f_rkt, " "); } else { first = 0; }
+    if (value && !Strcmp(value, "")) {
+      Printf(f_rkt, "%s = %s", slot_name, value);
+    } else {
+      Printf(f_rkt, "%s", slot_name);
+    }
     Append(entries, slot_name);
     Delete(value);
   }
@@ -224,20 +212,107 @@ int RACKET::classDeclaration(Node *n) {
   String *name = Getattr(n, "sym:name");
   String *kind = Getattr(n, "kind");
 
-  if (Strcmp(kind, "struct")) {
+  if (!Strcmp(kind, "struct")) {
+    Append(entries, NewStringf("make-%s", name));
+
+    Printf(f_rkt, "(define-cstruct _%s\n", name);
+    Printf(f_rkt, "  (");
+
+    int first = 1;
+
+    for (Node *c = firstChild(n); c; c = nextSibling(c)) {
+      if (Strcmp(nodeType(c), "cdecl")) {
+        Printf(stderr, "Structure %s has a slot that we can't deal with.\n", name);
+        Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
+               nodeType(c), Getattr(c, "name"), Getattr(c, "type"));
+        SWIG_exit(EXIT_FAILURE);
+      }
+
+      String *temp = Copy(Getattr(c, "decl"));
+      if (temp) {
+        Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
+        String *lisp_type = get_ffi_type(n, temp);
+        Delete(temp);
+
+        String *slot_name = Getattr(c, "sym:name");
+
+        if (!first) { Printf(f_rkt, "\n   "); } else { first = 0; }
+        Printf(f_rkt, "[%s %s]", slot_name, lisp_type);
+
+        Append(entries, NewStringf("%s-%s", name, slot_name));
+        Delete(lisp_type);
+      }
+    }
+
+    Printf(f_rkt, "))\n\n");
+
+    // FIXME!
+    /* Add this structure to the known lisp types */
+    //Printf(stdout, "Adding %s foreign type\n", name);
+    //  add_defined_foreign_type(name);
+
+    return SWIG_OK;
+  }
+  else if (!Strcmp(kind, "union")) {
+    String *expr = stringOfUnion(n, 2);
+    Printf(f_rkt, "(define _%s\n", name);
+    Printf(f_rkt, "  %s)\n\n", expr);
+
+    // FIXME! Add this structure to the known lisp types
+    //Printf(stdout, "Adding %s foreign type\n", name);
+    //  add_defined_foreign_type(name);
+
+    return SWIG_OK;
+  }
+  else {
     Printf(stderr, "Don't know how to deal with %s kind of class yet.\n", kind);
     Printf(stderr, " (name: %s)\n", name);
     SWIG_exit(EXIT_FAILURE);
+    return 0; // unreachable (FIXME?)
   }
+}
 
-  Append(entries, NewStringf("make-%s", name));
 
-  Printf(f_rkt, "(define-cstruct _%s\n", name);
-  Printf(f_rkt, "  (");
+String *RACKET::stringOfFunction(Node *n, int indent) {
+  String *out = NewString("");
+  ParmList *pl = Getattr(n, "parms");
+  int argnum = 0, first = 1;
+
+  Printf(out, "(_fun ");
+
+  for (Parm *p = pl; p; p = nextSibling(p), argnum++) {
+    String *argname = Getattr(p, "name");
+    String *ffitype = get_ffi_type(n, Getattr(p, "type"));
+    int tempargname = 0;
+
+    if (!argname) {
+      argname = NewStringf("arg%d", argnum);
+      tempargname = 1;
+    }
+
+    Printf(out, "[%s : %s]\n%s", argname, ffitype, "      ");
+    writeIndent(out, indent);
+
+    Delete(ffitype);
+    if (tempargname)
+      Delete(argname);
+  }
+  String *ffitype = get_ffi_type(n, Getattr(n, "type"));
+  Printf(out, "-> %s)", ffitype);
+
+  return out;
+}
+
+String *RACKET::stringOfUnion(Node *n, int indent) {
+  String *out = NewString("");
+
+  Printf(out, "(_union");
+
+  int first = 1;
 
   for (Node *c = firstChild(n); c; c = nextSibling(c)) {
     if (Strcmp(nodeType(c), "cdecl")) {
-      Printf(stderr, "Structure %s has a slot that we can't deal with.\n", name);
+      Printf(stderr, "Structure %s has a slot that we can't deal with.\n", Getattr(n, "name"));
       Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
              nodeType(c), Getattr(c, "name"), Getattr(c, "type"));
       SWIG_exit(EXIT_FAILURE);
@@ -249,22 +324,23 @@ int RACKET::classDeclaration(Node *n) {
       String *lisp_type = get_ffi_type(n, temp);
       Delete(temp);
 
-      String *slot_name = Getattr(c, "sym:name");
-      Printf(f_rkt, "[%s %s]\n    ", slot_name, lisp_type);
+      // String *slot_name = Getattr(c, "sym:name");
+      if (!first) { Printf(out, "\n  "); writeIndent(out, indent); } else { first = 0; }
+      Printf(out, " %s", lisp_type);
 
-      Append(entries, NewStringf("%s-%s", name, slot_name));
       Delete(lisp_type);
     }
   }
 
-  Printf(f_rkt, "))\n");
+  Printf(out, ")");
 
-  // FIXME!
-  /* Add this structure to the known lisp types */
-  //Printf(stdout, "Adding %s foreign type\n", name);
-  //  add_defined_foreign_type(name);
+  return out;
+}
 
-  return SWIG_OK;
+void RACKET::writeIndent(String *out, int indent) {
+  for (int i = 0; i < indent; ++i) {
+    Printf(out, " ");
+  }
 }
 
 /* utilities */
