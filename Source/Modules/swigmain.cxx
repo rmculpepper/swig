@@ -40,6 +40,7 @@ extern "C" {
   Language *swig_php(void);
   Language *swig_python(void);
   Language *swig_r(void);
+  Language *swig_racket(void);
   Language *swig_ruby(void);
   Language *swig_scilab(void);
   Language *swig_tcl(void);
@@ -74,6 +75,7 @@ static TargetLanguageModule modules[] = {
   {"-pike", NULL, "Pike", Disabled},
   {"-python", swig_python, "Python", Supported},
   {"-r", swig_r, "R (aka GNU S)", Supported},
+  {"-racket", swig_racket, "Racket (FFI)", Experimental},
   {"-ruby", swig_ruby, "Ruby", Supported},
   {"-scilab", swig_scilab, "Scilab", Supported},
   {"-sexp", NULL, "Lisp S-Expressions", Disabled},

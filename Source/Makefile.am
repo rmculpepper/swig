@@ -69,6 +69,7 @@ eswig_SOURCES =	CParse/cscanner.c		\
 		Modules/php.cxx			\
 		Modules/python.cxx		\
 		Modules/r.cxx			\
+		Modules/racket.cxx		\
 		Modules/ruby.cxx		\
 		Modules/scilab.cxx		\
 		Modules/swigmain.cxx		\
