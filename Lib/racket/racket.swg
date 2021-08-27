@@ -72,11 +72,3 @@
 
 %typemap(in) const void * "#;const _pointer";
 %typemap(in) const char * "#;const _pointer";
-
-/* Defaults */
-
-//%typemap(in) SWIGTYPE *            "(_pointer $typemap(in, $*1_type))" /* #| FIXME $1_type |#)" */
-// %typemap(in) const SWIGTYPE *      "#;const (begin _pointer #| FIXME $1_type |#)"
-
-%typemap(in) enum SWIGTYPE         "(begin _int #| FIXME $1_type |#) }"
-// %typemap(in) SWIGTYPE              "(begin _FIXME #| FIXME $1_type |#)"
