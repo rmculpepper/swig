@@ -35,6 +35,7 @@ public:
   List *entries;
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
+  String *get_ffi_type_copy(Node *n, SwigType *ty);
   String *convert_literal(String *num_param, String *type);
   String *strip_parens(String *string);
   String *stringOfFunction(Node *n, ParmList *pl, String *restype, int indent);
@@ -399,20 +400,37 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty) {
 
   if (tm) {
     return NewString(tm);
-  }
-  else if (SwigType_ispointer(ty)) {
+  } else {
     SwigType *cp = Copy(ty);
-    SwigType_del_pointer(cp);
-    String *expr = get_ffi_type(n, cp);
-    String *res;
-    if (SwigType_isfunction(cp)) {
-      res = expr;
-    } else {
-      res = NewStringf("(_ptr ?? %s)", expr);
-      Delete(expr);
-    }
+    String *res = get_ffi_type_copy(n, cp);
     Delete(cp);
     return res;
+  }
+}
+
+String *RACKET::get_ffi_type_copy(Node *n, SwigType *ty) {
+  String *result;
+  // PRE: ty is our private copy, can mutate, must not delete
+  if (SwigType_isqualifier(ty)) {
+    int isconst = SwigType_isconst(ty);
+    SwigType_del_qualifier(ty);
+    String *expr = get_ffi_type(n, ty);
+    if (isconst) {
+      result = NewStringf("#;const %s", expr);
+      Delete(expr);
+    } else {
+      result = expr;
+    }
+  }
+  else if (SwigType_isfunctionpointer(ty)) {
+    SwigType_del_pointer(ty);
+    result = get_ffi_type_copy(n, ty);
+  }
+  else if (SwigType_ispointer(ty)) {
+    SwigType_del_pointer(ty);
+    String *expr = get_ffi_type(n, ty);
+    result = NewStringf("(_ptr ?? %s)", expr);
+    Delete(expr);
   }
   /* else if (SwigType_ispointer(ty)) {
     SwigType *cp = Copy(ty);
@@ -440,49 +458,25 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty) {
     Delete(inner_type);
     return str;
   } */
-  /* else if (SwigType_isarray(ty)) {
-    SwigType *cp = Copy(ty);
+  else if (SwigType_isarray(ty)) {
     String *array_dim = SwigType_array_getdim(ty, 0);
-
     if (!Strcmp(array_dim, "")) {	//dimension less array convert to pointer
       Delete(array_dim);
-      SwigType_del_array(cp);
-      SwigType_add_pointer(cp);
-      String *str = get_ffi_type(n, cp);
-      Delete(cp);
-      return str;
+      SwigType_del_array(ty);
+      SwigType_add_pointer(ty);
+      result = get_ffi_type(n, ty);
+    } else if (SwigType_array_ndim(ty) == 1) {
+      SwigType_pop_arrays(ty);
+      String *innertype = get_ffi_type(n, ty);
+      result = NewStringf("(_array %s %s)", innertype, array_dim);
+      Delete(array_dim);
+      Delete(innertype);
     } else {
-      SwigType_pop_arrays(cp);
-      String *inner_type = get_ffi_type(n, cp);
-      Delete(cp);
-
-      int ndim = SwigType_array_ndim(ty);
-      String *dimension;
-      if (ndim == 1) {
-	dimension = array_dim;
-      } else {
-	dimension = array_dim;
-	for (int i = 1; i < ndim; i++) {
-	  array_dim = SwigType_array_getdim(ty, i);
-	  Append(dimension, " ");
-	  Append(dimension, array_dim);
-	  Delete(array_dim);
-	}
-	String *temp = dimension;
-	dimension = NewStringf("(%s)", dimension);
-	Delete(temp);
-      }
-      String *str;
-      if (is_function)
-	str = NewStringf("(ffi:c-ptr (ffi:c-array %s %s))", inner_type, dimension);
-      else
-	str = NewStringf("(ffi:c-array %s %s)", inner_type, dimension);
-
-      Delete(inner_type);
-      Delete(dimension);
-      return str;
+      String *innertype = get_ffi_type(n, ty);
+      result = NewStringf("(_array %s FIXME)", innertype);
+      Delete(innertype);
     }
-  } */
+  }
   else if (SwigType_isfunction(ty)) {
     // FIXME
     // return NewStringf("_fpointer");
@@ -496,46 +490,9 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty) {
     Delete(restype);
     return expr;
   }
-  /* else if (SwigType_isfunction(ty)) {
-    SwigType *cp = Copy(ty);
-    SwigType *fn = SwigType_pop_function(cp);
-    String *args = NewString("");
-    ParmList *pl = SwigType_function_parms(fn, n);
-    if (ParmList_len(pl) != 0) {
-      Printf(args, "(:arguments ");
-    }
-    int argnum = 0, first = 1;
-    for (Parm *p = pl; p; p = nextSibling(p), argnum++) {
-      String *argname = Getattr(p, "name");
-      SwigType *argtype = Getattr(p, "type");
-      String *ffitype = get_ffi_type(n, argtype);
-
-      int tempargname = 0;
-
-      if (!argname) {
-	argname = NewStringf("arg%d", argnum);
-	tempargname = 1;
-      }
-      if (!first) {
-	Printf(args, "\n\t\t");
-      }
-      Printf(args, "(%s %s)", argname, ffitype);
-      first = 0;
-      Delete(ffitype);
-      if (tempargname)
-	Delete(argname);
-    }
-    if (ParmList_len(pl) != 0) {
-      Printf(args, ")\n");	// finish arg list
-    }
-    String *ffitype = get_ffi_type(n, cp);
-    String *str = NewStringf("(ffi:c-function %s \t\t\t\t(:return-type %s))", args, ffitype);
-    Delete(fn);
-    Delete(args);
-    Delete(cp);
-    Delete(ffitype);
-    return str;
-  } */
+  else if (SwigType_issimple(ty)) {
+    result = NewStringf("SIMPLE %s", ty);
+  }
   else {
     String *str = SwigType_str(ty, 0);
     if (str) {
@@ -552,6 +509,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty) {
     }
     return str;
   }
+  return result;
 }
 
 extern "C" Language *swig_racket(void) {
