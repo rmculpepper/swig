@@ -20,6 +20,24 @@ Racket Options (available with -racket)\n\
                          externed functions and variables are created.\n\
 ";
 
+static const char *basic_types_array[] =
+  {
+   "_byte", "_sbyte", "_ubyte", "_wchar",
+   "_short", "_sshort", "_ushort",
+   "_int", "_sint", "_uint",
+   "_long", "_slong", "_ulong",
+   "_llong", "_sllong", "_ullong",
+   "_intptr",
+   "_int8", "_sint8", "_uint8",
+   "_int16", "_sint16", "_uint16",
+   "_int32", "_sint32", "_uint32",
+   "_int64", "_uint64", "_uint64",
+   "_size", "_ssize", "_ptrdiff",
+   "_float", "_double", "_double*", "_longdouble",
+   "_stdbool", "_bool",
+   "_pointer"
+  };
+
 class RACKET:public Language {
 public:
   File *f_rkt;
@@ -43,9 +61,11 @@ private:
   String *stringOfFunction(Node *n, ParmList *pl, String *restype, int indent);
   String *stringOfUnion(Node *n, int indent);
   void writeIndent(String *out, int indent, int moreindent);
+  void add_known_type(String *ty, const char *kind);
   int extern_all_flag;
   int generate_typedef_flag;
   int is_function;
+  Hash *known_types;
 };
 
 void RACKET::main(int argc, char *argv[]) {
@@ -56,6 +76,7 @@ void RACKET::main(int argc, char *argv[]) {
   SWIG_config_file("racket.swg");
   generate_typedef_flag = 0;
   extern_all_flag = 0;
+  known_types = NewHash();
 
   for (i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-help")) {
@@ -68,6 +89,15 @@ void RACKET::main(int argc, char *argv[]) {
       Swig_mark_arg(i);
     }
   }
+
+  for (i = 1; i < (int)(sizeof(basic_types_array) / sizeof(basic_types_array[0])); ++i) {
+    add_known_type(NewString(basic_types_array[i]), "base");
+  }
+}
+
+void RACKET::add_known_type(String *type, const char *kind) {
+  Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
+  Setattr(known_types, type, kind);
 }
 
 int RACKET::top(Node *n) {
@@ -179,6 +209,7 @@ int RACKET::typedefHandler(Node *n) {
     is_function = 0;
     Printf(f_rkt, "(define _%s\n", Getattr(n, "name"));
     Printf(f_rkt, "  %s)\n\n", get_ffi_type(n, Getattr(n, "type")));
+    add_known_type(Getattr(n, "name"), "typedef");
   }
   return Language::typedefHandler(n);
 }
@@ -209,6 +240,7 @@ int RACKET::enumDeclaration(Node *n) {
   }
 
   Printf(f_rkt, ")))\n\n");
+  add_known_type(name, "enum");
   return SWIG_OK;
 }
 
@@ -253,11 +285,7 @@ int RACKET::classDeclaration(Node *n) {
 
     Printf(f_rkt, "))\n\n");
 
-    // FIXME!
-    /* Add this structure to the known lisp types */
-    //Printf(stdout, "Adding %s foreign type\n", name);
-    //  add_defined_foreign_type(name);
-
+    add_known_type(name, "struct");
     return SWIG_OK;
   }
   else if (!Strcmp(kind, "union")) {
@@ -265,10 +293,7 @@ int RACKET::classDeclaration(Node *n) {
     Printf(f_rkt, "(define _%s\n", name);
     Printf(f_rkt, "  %s)\n\n", expr);
 
-    // FIXME! Add this structure to the known lisp types
-    //Printf(stdout, "Adding %s foreign type\n", name);
-    //  add_defined_foreign_type(name);
-
+    add_known_type(name, "union");
     return SWIG_OK;
   }
   else {
@@ -433,32 +458,6 @@ String *RACKET::get_ffi_type_copy(Node *n, SwigType *ty) {
     SwigType_del_pointer(ty);
     result = get_ffi_ptr_type(n, ty);
   }
-  /* else if (SwigType_ispointer(ty)) {
-    SwigType *cp = Copy(ty);
-    SwigType_del_pointer(cp);
-    String *inner_type = get_ffi_type(n, cp);
-
-    if (SwigType_isfunction(cp)) {
-      return inner_type;
-    }
-
-    SwigType *base = SwigType_base(ty);
-    String *base_name = SwigType_str(base, 0);
-
-    String *str;
-    if (!Strcmp(base_name, "int") || !Strcmp(base_name, "float") || !Strcmp(base_name, "short")
-        || !Strcmp(base_name, "double") || !Strcmp(base_name, "long") 
-        || !Strcmp(base_name, "char")) {
-      str = NewStringf("(ffi:c-ptr %s)", inner_type);
-    } else {
-      str = NewStringf("(ffi:c-pointer %s)", inner_type);
-    }
-    Delete(base_name);
-    Delete(base);
-    Delete(cp);
-    Delete(inner_type);
-    return str;
-  } */
   else if (SwigType_isarray(ty)) {
     String *array_dim = SwigType_array_getdim(ty, 0);
     if (!Strcmp(array_dim, "")) {	//dimension less array convert to pointer
