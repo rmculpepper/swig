@@ -72,9 +72,9 @@
 // %typemap(in) char * "_pointer";
 // %typemap(in) unsigned char * "_pointer";
 
-%typemap(in) const void * "_const-pointer";
-// %typemap(in) const char * "_const-pointer";
-// %typemap(in) const unsigned char * "_const-pointer";
+// %typemap(in) const void * "_pointer";
+// %typemap(in) const char * "_pointer";
+// %typemap(in) const unsigned char * "_pointer";
 
 /* ======================================== */
 /* Code inserts */
@@ -86,10 +86,8 @@
 
 (module ffi-type-util racket/base
   (require ffi/unsafe)
-  (provide (protect-out (all-defined-out)))
-  (define _const-pointer _pointer)
   (define (_pointer-to type) _pointer) ;; Hint: maybe use (_ptr ? type) instead
-  (define (_const type) type))
+  (provide (protect-out (all-defined-out))))
 (require (submod "." ffi-type-util))
 
 (define-ffi-definer define-foreign
