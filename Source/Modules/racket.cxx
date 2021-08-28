@@ -209,7 +209,15 @@ int RACKET::variableWrapper(Node *n) {
 }
 
 int RACKET::typedefHandler(Node *n) {
-  if (generate_typedef_flag) {
+  /* A declaration like "typedef struct foo_st { ... } FOO;" generates two things:
+   * (1) a struct/class declaration for FOO (not foo_st!)
+   *     More precisely: name="foo_st", sym:name="FOO", tdname="FOO".
+   * (2) a typedef declaration for FOO
+   *     More precisely: name="FOO", type="struct foo_st"
+   * The struct/class decl is processed first, so we omit the typedef if the
+   * given type name is already known.
+   */
+  if (!Getattr(known_types, Getattr(n, "name"))) {
     is_function = 0;
     Printf(f_rkt, "(define _%s\n", Getattr(n, "name"));
     Printf(f_rkt, "  %s)\n\n", get_ffi_type(n, Getattr(n, "type")));

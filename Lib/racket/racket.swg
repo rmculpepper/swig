@@ -10,25 +10,25 @@
 /* Integer types */
 
 %typemap(in) char "_byte";
-%typemap(in) signed char "_sbyte";
+%typemap(in) signed char "_byte";
 %typemap(in) unsigned char "_ubyte";
 
 %typemap(in) wchar_t "_wchar"
 
 %typemap(in) short "_short";
-%typemap(in) signed short "_sshort";
+%typemap(in) signed short "_short";
 %typemap(in) unsigned short "_ushort";
 
 %typemap(in) int "_int";
-%typemap(in) signed int "_sint";
+%typemap(in) signed int "_int";
 %typemap(in) unsigned int "_uint";
 
 %typemap(in) long "_long";
-%typemap(in) signed long "_slong";
+%typemap(in) signed long "_long";
 %typemap(in) unsigned long "_ulong";
 
 %typemap(in) long long "_llong";
-%typemap(in) signed long long "_sllong";
+%typemap(in) signed long long "_llong";
 %typemap(in) unsigned long long "_ullong";
 
 %typemap(in) intptr_t "_intptr";
