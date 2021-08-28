@@ -20,24 +20,6 @@ Racket Options (available with -racket)\n\
                          externed functions and variables are created.\n\
 ";
 
-static const char *basic_types_array[] =
-  {
-   "_byte", "_sbyte", "_ubyte", "_wchar",
-   "_short", "_sshort", "_ushort",
-   "_int", "_sint", "_uint",
-   "_long", "_slong", "_ulong",
-   "_llong", "_sllong", "_ullong",
-   "_intptr",
-   "_int8", "_sint8", "_uint8",
-   "_int16", "_sint16", "_uint16",
-   "_int32", "_sint32", "_uint32",
-   "_int64", "_uint64", "_uint64",
-   "_size", "_ssize", "_ptrdiff",
-   "_float", "_double", "_double*", "_longdouble",
-   "_stdbool", "_bool",
-   "_pointer"
-  };
-
 class RACKET:public Language {
 public:
   File *f_rkt;
@@ -58,7 +40,7 @@ public:
   virtual int typedefHandler(Node *n);
   List *entries;
 private:
-  String *get_ffi_type(Node *n, SwigType *ty);
+  String *get_ffi_type(Node *n, SwigType *ty, int *isconst);
   String *get_mapped_type(Node *n, SwigType *ty);
   String *convert_literal(String *num_param, String *type);
   String *strip_parens(String *string);
@@ -94,14 +76,10 @@ void RACKET::main(int argc, char *argv[]) {
       Swig_mark_arg(i);
     }
   }
-
-  for (i = 1; i < (int)(sizeof(basic_types_array) / sizeof(basic_types_array[0])); ++i) {
-    add_known_type(NewString(basic_types_array[i]), "base");
-  }
 }
 
 void RACKET::add_known_type(String *type, const char *kind) {
-  // Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
+  Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
   Setattr(known_types, type, kind);
 }
 
@@ -170,7 +148,7 @@ int RACKET::functionWrapper(Node *n) {
   Append(entries, func_name);
 
   ParmList *pl = Getattr(n, "parms");
-  String *restype = get_ffi_type(n, Getattr(n, "type"));
+  String *restype = get_ffi_type(n, Getattr(n, "type"), NULL);
   String *expr = stringOfFunction(n, pl, restype, 2);
   Printf(f_wrappers, "(define-foreign %s\n", func_name);
   Printf(f_wrappers, "  %s)\n\n", expr);
@@ -201,7 +179,7 @@ int RACKET::variableWrapper(Node *n) {
     return SWIG_OK;
 
   String *var_name = Getattr(n, "sym:name");
-  String *lisp_type = get_ffi_type(n, Getattr(n, "type"));
+  String *lisp_type = get_ffi_type(n, Getattr(n, "type"), NULL);
 
   Printf(f_wrappers, "(define-foreign %s %s)\n", var_name, lisp_type);
   // FIXME: use #:c-id for overridden name
@@ -220,11 +198,25 @@ int RACKET::typedefHandler(Node *n) {
    * The struct/class decl is processed first, so we omit the typedef if the
    * given type name is already known.
    */
-  if (!Getattr(known_types, Getattr(n, "name"))) {
+  String *tdtype = NewStringf("_%s", Getattr(n, "name"));
+  if (!Getattr(known_types, tdtype)) {
+    SwigType *ty = Getattr(n, "type");
+    String *ffitype = get_ffi_type(n, ty, NULL);
     is_function = 0;
-    Printf(f_wrappers, "(define _%s\n", Getattr(n, "name"));
-    Printf(f_wrappers, "  %s)\n\n", get_ffi_type(n, Getattr(n, "type")));
-    add_known_type(Getattr(n, "name"), "typedef");
+
+    Printf(f_wrappers, "(define %s %s)\n", tdtype, ffitype);
+    if (is_known_struct_type(ffitype)) {
+      Printf(f_wrappers, "(define %s-pointer %s-pointer)\n", tdtype, ffitype);
+      Printf(f_wrappers, "(define %s-pointer/null %s-pointer/null)\n", tdtype, ffitype);
+      add_known_type(tdtype, "struct");
+    } else if (SwigType_issimple(ty) && !Strncmp(ty, "struct ", strlen("struct "))) {
+      Printf(f_wrappers, "(define %s-pointer (_pointer-to %s)\n", tdtype, ffitype);
+      Printf(f_wrappers, "(define %s-pointer/null (_pointer-to %s)\n", tdtype, ffitype);
+      add_known_type(tdtype, "struct");
+    } else {
+      add_known_type(tdtype, "typedef");
+    }
+    Printf(f_wrappers, "\n");
   }
   return Language::typedefHandler(n);
 }
@@ -234,9 +226,9 @@ int RACKET::enumDeclaration(Node *n) {
     return SWIG_NOWRAP;
 
   is_function = 0;
-  String *name = Getattr(n, "sym:name");
+  String *tyname = NewStringf("_%s", Getattr(n, "sym:name"));
 
-  Printf(f_wrappers, "(define _%s\n", name);
+  Printf(f_wrappers, "(define %s\n", tyname);
   Printf(f_wrappers, "  (_enum '(");
 
   int first = 1;
@@ -255,7 +247,7 @@ int RACKET::enumDeclaration(Node *n) {
   }
 
   Printf(f_wrappers, ")))\n\n");
-  add_known_type(name, "enum");
+  add_known_type(tyname, "enum");
   return SWIG_OK;
 }
 
@@ -264,12 +256,13 @@ int RACKET::enumDeclaration(Node *n) {
 int RACKET::classDeclaration(Node *n) {
   is_function = 0;
   String *name = Getattr(n, "sym:name");
+  String *tyname = NewStringf("_%s", name);
   String *kind = Getattr(n, "kind");
 
   if (!Strcmp(kind, "struct")) {
     Append(entries, NewStringf("make-%s", name));
 
-    Printf(f_wrappers, "(define-cstruct _%s\n", name);
+    Printf(f_wrappers, "(define-cstruct %s\n", tyname);
     Printf(f_wrappers, "  (");
 
     int first = 1;
@@ -285,7 +278,7 @@ int RACKET::classDeclaration(Node *n) {
       String *temp = Copy(Getattr(c, "decl"));
       if (temp) {
         Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
-        String *lisp_type = get_ffi_type(n, temp);
+        String *lisp_type = get_ffi_type(n, temp, NULL);
         Delete(temp);
 
         String *slot_name = Getattr(c, "sym:name");
@@ -300,15 +293,15 @@ int RACKET::classDeclaration(Node *n) {
 
     Printf(f_wrappers, "))\n\n");
 
-    add_known_type(name, "struct");
+    add_known_type(tyname, "struct");
     return SWIG_OK;
   }
   else if (!Strcmp(kind, "union")) {
     String *expr = stringOfUnion(n, 2);
-    Printf(f_wrappers, "(define _%s\n", name);
+    Printf(f_wrappers, "(define %s\n", tyname);
     Printf(f_wrappers, "  %s)\n\n", expr);
 
-    add_known_type(name, "union");
+    add_known_type(tyname, "union");
     return SWIG_OK;
   }
   else {
@@ -327,7 +320,7 @@ String *RACKET::stringOfFunction(Node *n, ParmList *pl, String *restype, int ind
   Printf(out, "(_fun ");
   for (Parm *p = pl; p; p = nextSibling(p), argnum++) {
     String *argname = Getattr(p, "name");
-    String *ffitype = get_ffi_type(n, Getattr(p, "type"));
+    String *ffitype = get_ffi_type(n, Getattr(p, "type"), NULL);
     if (argname) {
       Printf(out, "[%s : %s]", argname, ffitype);
     } else {
@@ -357,7 +350,7 @@ String *RACKET::stringOfUnion(Node *n, int indent) {
     String *temp = Copy(Getattr(c, "decl"));
     if (temp) {
       Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
-      String *lisp_type = get_ffi_type(n, temp);
+      String *lisp_type = get_ffi_type(n, temp, NULL);
       Delete(temp);
 
       // String *slot_name = Getattr(c, "sym:name");
@@ -448,7 +441,7 @@ String *RACKET::get_mapped_type(Node *n, SwigType *ty) {
 }
 
 
-String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
+String *RACKET::get_ffi_type(Node *n, SwigType *ty0, int *isconst) {
   String *result;
   SwigType *ty = Copy(ty0);     // private copy for mutation; delete at end
 
@@ -456,10 +449,12 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     ;
   }
   else if (SwigType_isqualifier(ty)) {
-    int isconst = SwigType_isconst(ty);
+    int local_isconst = SwigType_isconst(ty);
     SwigType_del_qualifier(ty);
-    String *expr = get_ffi_type(n, ty);
+    String *expr = get_ffi_type(n, ty, NULL);
     if (isconst) {
+      *isconst = local_isconst;
+    } else if (local_isconst) {
       result = NewStringf("(_const %s)", expr);
       Delete(expr);
     } else {
@@ -472,15 +467,15 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
       Delete(array_dim);
       SwigType_del_array(ty);
       SwigType_add_pointer(ty);
-      result = get_ffi_type(n, ty);
+      result = get_ffi_type(n, ty, NULL);
     } else if (SwigType_array_ndim(ty) == 1) {
       SwigType_pop_arrays(ty);
-      String *innertype = get_ffi_type(n, ty);
+      String *innertype = get_ffi_type(n, ty, NULL);
       result = NewStringf("(_array %s %s)", innertype, array_dim);
       Delete(array_dim);
       Delete(innertype);
     } else {
-      String *innertype = get_ffi_type(n, ty);
+      String *innertype = get_ffi_type(n, ty, NULL);
       result = NewStringf("(_array %s FIXME)", innertype);
       Delete(innertype);
     }
@@ -489,7 +484,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     // return NewStringf("_fpointer");
     SwigType *fn = SwigType_pop_function(ty);
     ParmList *pl = SwigType_function_parms(fn, n);
-    String *restype = get_ffi_type(n, ty);
+    String *restype = get_ffi_type(n, ty, NULL);
     String *expr = stringOfFunction(n, pl, restype, -1);
     Delete(fn);
     Delete(restype);
@@ -498,6 +493,10 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
   else if (SwigType_ispointer(ty)) {
     String *inner;
     SwigType_del_pointer(ty);
+    if (isconst && SwigType_isconst(ty)) {
+      SwigType_del_qualifier(ty);
+      *isconst = 1;
+    }
 
     if ((inner = get_mapped_type(n, ty))) {
       if (inner && is_known_struct_type(inner)) {
@@ -507,11 +506,20 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
       }
     }
     else if (SwigType_isfunction(ty)) {
-      result = get_ffi_type(n, ty);
+      result = get_ffi_type(n, ty, NULL);
     }
     else {
-      String *inner = get_ffi_type(n, ty);
-      result = NewStringf("(_pointer-to %s)", inner);
+      int local_isconst = 0;
+      String *inner = get_ffi_type(n, ty, &local_isconst);
+      if (is_known_struct_type(inner)) {
+        result = NewStringf("%s-pointer/null", inner);
+      } else {
+        if (local_isconst) {
+          result = NewStringf("(_pointer-to (_const %s))", inner);
+        } else {
+          result = NewStringf("(_pointer-to %s)", inner);
+        }
+      }
       Delete(inner);
     }
   }
