@@ -70,5 +70,5 @@
 %typemap(in) void * "_pointer";
 %typemap(in) char * "_pointer";
 
-%typemap(in) const void * "#;const _pointer";
-%typemap(in) const char * "#;const _pointer";
+%typemap(in) const void * "_const-pointer";
+%typemap(in) const char * "_const-pointer";

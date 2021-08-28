@@ -53,15 +53,14 @@ public:
   List *entries;
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
-  String *get_ffi_type_copy(Node *n, SwigType *ty);
-  String *get_ffi_ptr_type(Node *n, SwigType *ty);
-  String *get_ffi_simple_type(Node *n, SwigType *ty, const char *suffix);
+  String *get_mapped_type(Node *n, SwigType *ty);
   String *convert_literal(String *num_param, String *type);
   String *strip_parens(String *string);
   String *stringOfFunction(Node *n, ParmList *pl, String *restype, int indent);
   String *stringOfUnion(Node *n, int indent);
   void writeIndent(String *out, int indent, int moreindent);
   void add_known_type(String *ty, const char *kind);
+  int is_known_struct_type(String *ty);
   int extern_all_flag;
   int generate_typedef_flag;
   int is_function;
@@ -98,6 +97,11 @@ void RACKET::main(int argc, char *argv[]) {
 void RACKET::add_known_type(String *type, const char *kind) {
   Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
   Setattr(known_types, type, kind);
+}
+
+int RACKET::is_known_struct_type(String *ffitype) {
+  String *kind = Getattr(known_types, ffitype);
+  return (kind != NULL) && !Strcmp(kind, "struct");
 }
 
 int RACKET::top(Node *n) {
@@ -422,41 +426,34 @@ String *RACKET::convert_literal(String *num_param, String *type) {
   }
 }
 
-String *RACKET::get_ffi_type(Node *n, SwigType *ty) {
+String *RACKET::get_mapped_type(Node *n, SwigType *ty) {
   Node *node = NewHash();
   Setattr(node, "type", ty);
   Setfile(node, Getfile(n));
   Setline(node, Getline(n));
   const String *tm = Swig_typemap_lookup("in", node, "", 0);
   Delete(node);
-
-  if (tm) {
-    return NewString(tm);
-  } else {
-    SwigType *cp = Copy(ty);
-    String *res = get_ffi_type_copy(n, cp);
-    Delete(cp);
-    return res;
-  }
+  return tm ? NewString(tm) : NULL;
 }
 
-String *RACKET::get_ffi_type_copy(Node *n, SwigType *ty) {
+
+String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
   String *result;
-  // PRE: ty is our private copy, can mutate, must not delete
-  if (SwigType_isqualifier(ty)) {
+  SwigType *ty = Copy(ty0);     // private copy for mutation; delete at end
+
+  if ((result = get_mapped_type(n, ty))) {
+    ;
+  }
+  else if (SwigType_isqualifier(ty)) {
     int isconst = SwigType_isconst(ty);
     SwigType_del_qualifier(ty);
     String *expr = get_ffi_type(n, ty);
     if (isconst) {
-      result = NewStringf("#;const %s", expr);
+      result = NewStringf("(_const %s)", expr);
       Delete(expr);
     } else {
       result = expr;
     }
-  }
-  else if (SwigType_ispointer(ty)) {
-    SwigType_del_pointer(ty);
-    result = get_ffi_ptr_type(n, ty);
   }
   else if (SwigType_isarray(ty)) {
     String *array_dim = SwigType_array_getdim(ty, 0);
@@ -478,62 +475,56 @@ String *RACKET::get_ffi_type_copy(Node *n, SwigType *ty) {
     }
   }
   else if (SwigType_isfunction(ty)) {
-    // FIXME
     // return NewStringf("_fpointer");
-    SwigType *cp = Copy(ty);
-    SwigType *fn = SwigType_pop_function(cp);
+    SwigType *fn = SwigType_pop_function(ty);
     ParmList *pl = SwigType_function_parms(fn, n);
-    String *restype = get_ffi_type(n, cp);
+    String *restype = get_ffi_type(n, ty);
     String *expr = stringOfFunction(n, pl, restype, -1);
     Delete(fn);
-    Delete(cp);
     Delete(restype);
     return expr;
   }
+  else if (SwigType_ispointer(ty)) {
+    String *inner;
+    SwigType_del_pointer(ty);
+
+    if ((inner = get_mapped_type(n, ty))) {
+      if (inner && is_known_struct_type(inner)) {
+        result = NewStringf("%s-pointer/null", inner);
+      } else {
+        result = NewStringf("(_pointer-to %s)", inner);
+      }
+    }
+    else if (SwigType_isfunction(ty)) {
+      result = get_ffi_type(n, ty);
+    }
+    else {
+      String *inner = get_ffi_type(n, ty);
+      result = NewStringf("(_pointer-to %s)", inner);
+      Delete(inner);
+    }
+  }
   else if (SwigType_issimple(ty)) {
-    result = get_ffi_simple_type(n, ty, "");
+    String *str = SwigType_str(ty, 0);
+    int offset;
+
+    if (!Strncmp(str, "struct ", strlen("struct "))) {
+      offset = strlen("struct ");
+    } else if (!Strncmp(str, "class ", strlen("class "))) {
+      offset = strlen("class ");
+    } else if (!Strncmp(str, "union ", strlen("union "))) {
+      offset = strlen("union ");
+    } else {
+      offset = 0;
+    }
+    result = NewStringf("_%s", Char(str) + offset);
   }
   else {
     result = NewStringf("(begin _FIXME #| UNKNOWN %s |#)", SwigType_str(ty, 0));
   }
-  return result;
-}
 
-String *RACKET::get_ffi_ptr_type(Node *n, SwigType *ty) {
-  String *result;
-  while (SwigType_isconst(ty)) {
-    SwigType_del_qualifier(ty);
-  }
-  if (SwigType_isfunction(ty)) {
-    // This misses "typedefined_name_t *" where typedefined_name_t
-    // refers to function type.
-    result = get_ffi_type_copy(n, ty);
-  }
-  else if (SwigType_issimple(ty)) {
-    result = get_ffi_simple_type(n, ty, "-pointer/null");
-  }
-  else {
-    String *expr = get_ffi_type(n, ty);
-    result = NewStringf("(_ptr ?? %s)", expr);
-    Delete(expr);
-  }
+  Delete(ty);
   return result;
-}
-
-String *RACKET::get_ffi_simple_type(Node *n, SwigType *ty, const char *suffix) {
-  String *str = SwigType_str(ty, 0);
-  if (!Strncmp(str, "struct ", strlen("struct "))) {
-    return NewStringf("_%s%s", Char(str) + strlen("struct "), suffix);
-  }
-  else if (!Strncmp(str, "class ", strlen("class "))) {
-    return NewStringf("_%s%s", Char(str) + strlen("class "), suffix);
-  }
-  else if (!Strncmp(str, "union ", strlen("union "))) {
-    return NewStringf("_%s%s", Char(str) + strlen("union "), suffix);
-  }
-  else {
-    return NewStringf("_%s%s", str, suffix);
-  }
 }
 
 
