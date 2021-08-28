@@ -56,6 +56,7 @@
 
 %typemap(in) float "_float";
 %typemap(in) double "_double";
+// %typemap(in) double "_double*";
 
 %typemap(in) long double "_longdouble"
 
@@ -68,7 +69,29 @@
 /* Pointer types */
 
 %typemap(in) void * "_pointer";
-%typemap(in) char * "_pointer";
+// %typemap(in) char * "_pointer";
+// %typemap(in) unsigned char * "_pointer";
 
 %typemap(in) const void * "_const-pointer";
-%typemap(in) const char * "_const-pointer";
+// %typemap(in) const char * "_const-pointer";
+// %typemap(in) const unsigned char * "_const-pointer";
+
+/* ======================================== */
+/* Code inserts */
+
+%insert("header") %{
+#lang racket/base
+(require ffi/unsafe ffi/unsafe/define)
+(provide (protect-out (all-defined-out)))
+
+(module ffi-type-util racket/base
+  (require ffi/unsafe)
+  (provide (protect-out (all-defined-out)))
+  (define _const-pointer _pointer)
+  (define (_pointer-to type) _pointer) ;; Hint: maybe use (_ptr ? type) instead
+  (define (_const type) type))
+(require (submod "." ffi-type-util))
+
+(define-ffi-definer define-foreign
+  FIXME)
+%}

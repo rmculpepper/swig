@@ -41,6 +41,12 @@ static const char *basic_types_array[] =
 class RACKET:public Language {
 public:
   File *f_rkt;
+  File *f_begin;
+  File *f_runtime;
+  File *f_header;
+  File *f_wrappers;
+  File *f_init;
+
   String *module;
   virtual void main(int argc, char *argv[]);
   virtual int top(Node *n);
@@ -95,7 +101,7 @@ void RACKET::main(int argc, char *argv[]) {
 }
 
 void RACKET::add_known_type(String *type, const char *kind) {
-  Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
+  // Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
   Setattr(known_types, type, kind);
 }
 
@@ -106,49 +112,46 @@ int RACKET::is_known_struct_type(String *ffitype) {
 
 int RACKET::top(Node *n) {
 
-  File *f_null = NewString("");
   module = Getattr(n, "name");
   String *output_filename;
   entries = NewList();
 
-  /* Get the output file name */
-  String *outfile = Getattr(n, "outfile");
-
-  if (!outfile) {
-    Printf(stderr, "Unable to determine outfile\n");
-    SWIG_exit(EXIT_FAILURE);
-  }
-
   output_filename = NewStringf("%s%s.rkt", SWIG_output_directory(), module);
-
   f_rkt = NewFile(output_filename, "w+", SWIG_output_files());
   if (!f_rkt) {
     FileErrorDisplay(output_filename);
     SWIG_exit(EXIT_FAILURE);
   }
 
-  Swig_register_filebyname("header", f_null);
-  Swig_register_filebyname("begin", f_null);
-  Swig_register_filebyname("runtime", f_null);
-  Swig_register_filebyname("wrapper", f_null);
+  f_begin = NewString("");
+  f_runtime = NewString("");
+  f_header = NewString("");
+  f_wrappers = NewString("");
+  f_init = NewString("");
 
-  String *header = NewString("");
+  /* Register file targets with the SWIG file handler */
+  Swig_register_filebyname("begin", f_begin);
+  Swig_register_filebyname("runtime", f_runtime);
+  Swig_register_filebyname("header", f_header);
+  Swig_register_filebyname("wrapper", f_wrappers);
+  Swig_register_filebyname("init", f_init);
 
-  Swig_banner_target_lang(header, ";;");
-
-  Printf(header, "#lang racket/base\n");
-  Printf(header, "(require ffi/unsafe ffi/unsafe/define)\n");
-  Printf(header, "(provide (protect-out (all-defined-out)))\n");
-  Printf(header, "\n");
-  Printf(header, "(define-ffi-definer define-foreign\n");
-  Printf(header, "  FIXME)\n");
-  Printf(header, "\n");
-
-  Printf(f_rkt, "%s", header);
+  Swig_banner_target_lang(f_begin, ";;");
 
   Language::top(n);
 
-  Delete(f_rkt);
+  Dump(f_begin, f_rkt);
+  // Dump(f_runtime, f_rkt);     // swig.swg assumes runtime is C/C++; so omit
+  Dump(f_header, f_rkt);
+  Dump(f_wrappers, f_rkt);
+  Dump(f_init, f_rkt);
+
+  Delete(f_begin);      f_begin = NULL;
+  Delete(f_runtime);    f_runtime = NULL;
+  Delete(f_header);     f_header = NULL;
+  Delete(f_wrappers);   f_wrappers = NULL;
+  Delete(f_init);       f_init = NULL;
+  Delete(f_rkt);        f_rkt = NULL;
   return SWIG_OK;
 }
 
@@ -169,8 +172,8 @@ int RACKET::functionWrapper(Node *n) {
   ParmList *pl = Getattr(n, "parms");
   String *restype = get_ffi_type(n, Getattr(n, "type"));
   String *expr = stringOfFunction(n, pl, restype, 2);
-  Printf(f_rkt, "(define-foreign %s\n", func_name);
-  Printf(f_rkt, "  %s)\n\n", expr);
+  Printf(f_wrappers, "(define-foreign %s\n", func_name);
+  Printf(f_wrappers, "  %s)\n\n", expr);
   Delete(expr);
   Delete(restype);
 
@@ -184,7 +187,7 @@ int RACKET::constantWrapper(Node *n) {
   String *converted_value = convert_literal(Getattr(n, "value"), type);
   String *name = Getattr(n, "sym:name");
 
-  Printf(f_rkt, "(define %s %s)\n\n", name, converted_value);
+  Printf(f_wrappers, "(define %s %s)\n\n", name, converted_value);
   Append(entries, name);
   Delete(converted_value);
 
@@ -200,7 +203,7 @@ int RACKET::variableWrapper(Node *n) {
   String *var_name = Getattr(n, "sym:name");
   String *lisp_type = get_ffi_type(n, Getattr(n, "type"));
 
-  Printf(f_rkt, "(define-foreign %s %s)\n", var_name, lisp_type);
+  Printf(f_wrappers, "(define-foreign %s %s)\n", var_name, lisp_type);
   // FIXME: use #:c-id for overridden name
   Append(entries, var_name);
 
@@ -219,8 +222,8 @@ int RACKET::typedefHandler(Node *n) {
    */
   if (!Getattr(known_types, Getattr(n, "name"))) {
     is_function = 0;
-    Printf(f_rkt, "(define _%s\n", Getattr(n, "name"));
-    Printf(f_rkt, "  %s)\n\n", get_ffi_type(n, Getattr(n, "type")));
+    Printf(f_wrappers, "(define _%s\n", Getattr(n, "name"));
+    Printf(f_wrappers, "  %s)\n\n", get_ffi_type(n, Getattr(n, "type")));
     add_known_type(Getattr(n, "name"), "typedef");
   }
   return Language::typedefHandler(n);
@@ -233,25 +236,25 @@ int RACKET::enumDeclaration(Node *n) {
   is_function = 0;
   String *name = Getattr(n, "sym:name");
 
-  Printf(f_rkt, "(define _%s\n", name);
-  Printf(f_rkt, "  (_enum '(");
+  Printf(f_wrappers, "(define _%s\n", name);
+  Printf(f_wrappers, "  (_enum '(");
 
   int first = 1;
 
   for (Node *c = firstChild(n); c; c = nextSibling(c)) {
     String *slot_name = Getattr(c, "name");
     String *value = Getattr(c, "enumvalue");
-    if (!first) { Printf(f_rkt, " "); } else { first = 0; }
+    if (!first) { Printf(f_wrappers, " "); } else { first = 0; }
     if (value && !Strcmp(value, "")) {
-      Printf(f_rkt, "%s = %s", slot_name, value);
+      Printf(f_wrappers, "%s = %s", slot_name, value);
     } else {
-      Printf(f_rkt, "%s", slot_name);
+      Printf(f_wrappers, "%s", slot_name);
     }
     Append(entries, slot_name);
     Delete(value);
   }
 
-  Printf(f_rkt, ")))\n\n");
+  Printf(f_wrappers, ")))\n\n");
   add_known_type(name, "enum");
   return SWIG_OK;
 }
@@ -266,8 +269,8 @@ int RACKET::classDeclaration(Node *n) {
   if (!Strcmp(kind, "struct")) {
     Append(entries, NewStringf("make-%s", name));
 
-    Printf(f_rkt, "(define-cstruct _%s\n", name);
-    Printf(f_rkt, "  (");
+    Printf(f_wrappers, "(define-cstruct _%s\n", name);
+    Printf(f_wrappers, "  (");
 
     int first = 1;
 
@@ -287,23 +290,23 @@ int RACKET::classDeclaration(Node *n) {
 
         String *slot_name = Getattr(c, "sym:name");
 
-        if (!first) { Printf(f_rkt, "\n   "); } else { first = 0; }
-        Printf(f_rkt, "[%s %s]", slot_name, lisp_type);
+        if (!first) { Printf(f_wrappers, "\n   "); } else { first = 0; }
+        Printf(f_wrappers, "[%s %s]", slot_name, lisp_type);
 
         Append(entries, NewStringf("%s-%s", name, slot_name));
         Delete(lisp_type);
       }
     }
 
-    Printf(f_rkt, "))\n\n");
+    Printf(f_wrappers, "))\n\n");
 
     add_known_type(name, "struct");
     return SWIG_OK;
   }
   else if (!Strcmp(kind, "union")) {
     String *expr = stringOfUnion(n, 2);
-    Printf(f_rkt, "(define _%s\n", name);
-    Printf(f_rkt, "  %s)\n\n", expr);
+    Printf(f_wrappers, "(define _%s\n", name);
+    Printf(f_wrappers, "  %s)\n\n", expr);
 
     add_known_type(name, "union");
     return SWIG_OK;
@@ -539,40 +542,3 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
 extern "C" Language *swig_racket(void) {
   return new RACKET();
 }
-
-
-/*
-get_ffi_type : SwigType -> String
-
-1. If typemap(in) maps ty to ffitype, then return ffitype.
-2. Otherwise, by cases:
--  ty = (const altty) --- return (_const ffitype), where ffitype = get_ffi_type(altty)
--  ty = (altty*) ---
-   - if typemap(in) maps altty to ffitype, then
-     - if ffitype is struct, then return ffitype-pointer/null
-     - otherwise, return (_pointer-to ffitype)
-   - if altty is a function type, then return get_ffi_type(altty)
-   - if altty is simple and _alttype is struct, then return _alttype-pointer/null
-   - otherwise, return (_pointer-to ffitype), where ffitype = get_ffi_type(altty)
--  ty = (elty[??]) ---
--  ty = (argty ... -> resty) ---
--  ty = (struct stname) --- return _stname
--  ty = (union uname) --- return _uname
--  ty = (enum ename) --- return _ename
--  ty is typedefined to altty --- return _ty
-
-
-Helpers:
-
-(module ffi-type-util racket/base
-  (require ffi/unsafe)
-  (provide (protect-out (all-defined-out)))
-  (define _const-pointer _pointer)
-  (define (_pointer-to type) _pointer) ;; Hint: maybe use (_ptr ? type).
-  (define (_const type) type))
-(require (submod "." ffi-type-util))
-
-
-"const char *p" = (_pointer-to (_const _byte)) = _const-pointer
-
- */
