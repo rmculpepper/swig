@@ -540,3 +540,40 @@ String *RACKET::get_ffi_simple_type(Node *n, SwigType *ty, const char *suffix) {
 extern "C" Language *swig_racket(void) {
   return new RACKET();
 }
+
+
+/*
+get_ffi_type : SwigType -> String
+
+1. If typemap(in) maps ty to ffitype, then return ffitype.
+2. Otherwise, by cases:
+-  ty = (const altty) --- return (_const ffitype), where ffitype = get_ffi_type(altty)
+-  ty = (altty*) ---
+   - if typemap(in) maps altty to ffitype, then
+     - if ffitype is struct, then return ffitype-pointer/null
+     - otherwise, return (_pointer-to ffitype)
+   - if altty is a function type, then return get_ffi_type(altty)
+   - if altty is simple and _alttype is struct, then return _alttype-pointer/null
+   - otherwise, return (_pointer-to ffitype), where ffitype = get_ffi_type(altty)
+-  ty = (elty[??]) ---
+-  ty = (argty ... -> resty) ---
+-  ty = (struct stname) --- return _stname
+-  ty = (union uname) --- return _uname
+-  ty = (enum ename) --- return _ename
+-  ty is typedefined to altty --- return _ty
+
+
+Helpers:
+
+(module ffi-type-util racket/base
+  (require ffi/unsafe)
+  (provide (protect-out (all-defined-out)))
+  (define _const-pointer _pointer)
+  (define (_pointer-to type) _pointer) ;; Hint: maybe use (_ptr ? type).
+  (define (_const type) type))
+(require (submod "." ffi-type-util))
+
+
+"const char *p" = (_pointer-to (_const _byte)) = _const-pointer
+
+ */
