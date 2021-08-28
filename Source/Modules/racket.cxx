@@ -50,8 +50,6 @@ private:
   void add_known_type(String *ty, const char *kind);
   int is_known_struct_type(String *ty);
   int extern_all_flag;
-  int generate_typedef_flag;
-  int is_function;
   Hash *known_types;
 };
 
@@ -61,7 +59,6 @@ void RACKET::main(int argc, char *argv[]) {
   Preprocessor_define("SWIGRACKET 1", 0);
   SWIG_library_directory("racket");
   SWIG_config_file("racket.swg");
-  generate_typedef_flag = 0;
   extern_all_flag = 0;
   known_types = NewHash();
 
@@ -70,9 +67,6 @@ void RACKET::main(int argc, char *argv[]) {
       Printf(stdout, "%s\n", usage);
     } else if ((Strcmp(argv[i], "-extern-all") == 0)) {
       extern_all_flag = 1;
-      Swig_mark_arg(i);
-    } else if ((Strcmp(argv[i], "-generate-typedef") == 0)) {
-      generate_typedef_flag = 1;
       Swig_mark_arg(i);
     }
   }
@@ -135,16 +129,11 @@ int RACKET::top(Node *n) {
 
 
 int RACKET::functionWrapper(Node *n) {
-  is_function = 1;
   String *storage = Getattr(n, "storage");
-
-  /*
   if (!extern_all_flag && (!storage || (!Swig_storage_isextern(n) && !Swig_storage_isexternc(n))))
     return SWIG_OK;
-  */
 
   String *func_name = Getattr(n, "sym:name");
-
   Append(entries, func_name);
 
   ParmList *pl = Getattr(n, "parms");
@@ -160,7 +149,6 @@ int RACKET::functionWrapper(Node *n) {
 
 
 int RACKET::constantWrapper(Node *n) {
-  is_function = 0;
   String *type = Getattr(n, "type");
   String *converted_value = convert_literal(Getattr(n, "value"), type);
   String *name = Getattr(n, "sym:name");
@@ -173,7 +161,6 @@ int RACKET::constantWrapper(Node *n) {
 }
 
 int RACKET::variableWrapper(Node *n) {
-  is_function = 0;
   String *storage = Getattr(n, "storage");
   if (!extern_all_flag && (!storage || (!Swig_storage_isextern(n) && !Swig_storage_isexternc(n))))
     return SWIG_OK;
@@ -202,7 +189,6 @@ int RACKET::typedefHandler(Node *n) {
   if (!Getattr(known_types, tdtype)) {
     SwigType *ty = Getattr(n, "type");
     String *ffitype = get_ffi_type(n, ty);
-    is_function = 0;
 
     Printf(f_wrappers, "(define %s %s)\n", tdtype, ffitype);
     if (is_known_struct_type(ffitype)) {
@@ -225,7 +211,6 @@ int RACKET::enumDeclaration(Node *n) {
   if (getCurrentClass() && (cplus_mode != PUBLIC))
     return SWIG_NOWRAP;
 
-  is_function = 0;
   String *tyname = NewStringf("_%s", Getattr(n, "sym:name"));
 
   Printf(f_wrappers, "(define %s\n", tyname);
@@ -254,7 +239,6 @@ int RACKET::enumDeclaration(Node *n) {
 
 // Includes structs
 int RACKET::classDeclaration(Node *n) {
-  is_function = 0;
   String *name = Getattr(n, "sym:name");
   String *tyname = NewStringf("_%s", name);
   String *kind = Getattr(n, "kind");
@@ -449,7 +433,6 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     ;
   }
   else if (SwigType_isqualifier(ty)) {
-    int isconst = SwigType_isconst(ty);
     SwigType_del_qualifier(ty);
     result = get_ffi_type(n, ty);
   }
