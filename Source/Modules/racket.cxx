@@ -36,6 +36,7 @@ public:
   virtual int variableWrapper(Node *n);
   virtual int constantWrapper(Node *n);
   virtual int classDeclaration(Node *n);
+  virtual int classforwardDeclaration(Node *n);
   virtual int enumDeclaration(Node *n);
   virtual int typedefHandler(Node *n);
   List *entries;
@@ -49,8 +50,11 @@ private:
   void writeIndent(String *out, int indent, int moreindent);
   void add_known_type(String *ty, const char *kind);
   int is_known_struct_type(String *ty);
+  void emit_forward_structs();
   int extern_all_flag;
   Hash *known_types;
+  Hash *used_structs;
+  Hash *defined_structs;
 };
 
 void RACKET::main(int argc, char *argv[]) {
@@ -61,6 +65,8 @@ void RACKET::main(int argc, char *argv[]) {
   SWIG_config_file("racket.swg");
   extern_all_flag = 0;
   known_types = NewHash();
+  used_structs = NewHash();
+  defined_structs = NewHash();
 
   for (i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-help")) {
@@ -111,6 +117,7 @@ int RACKET::top(Node *n) {
   Swig_banner_target_lang(f_begin, ";;");
 
   Language::top(n);
+  emit_forward_structs();
 
   Dump(f_begin, f_rkt);
   // Dump(f_runtime, f_rkt);     // swig.swg assumes runtime is C/C++; so omit
@@ -190,19 +197,33 @@ int RACKET::typedefHandler(Node *n) {
     SwigType *ty = Getattr(n, "type");
     String *ffitype = get_ffi_type(n, ty);
 
-    Printf(f_wrappers, "(define %s %s)\n", tdtype, ffitype);
     if (is_known_struct_type(ffitype)) {
+      Printf(f_wrappers, "(define %s %s)\n", tdtype, ffitype);
       Printf(f_wrappers, "(define %s-pointer %s-pointer)\n", tdtype, ffitype);
       Printf(f_wrappers, "(define %s-pointer/null %s-pointer/null)\n", tdtype, ffitype);
+      Printf(f_wrappers, "\n");
       add_known_type(tdtype, "struct");
     } else if (SwigType_issimple(ty) && !Strncmp(ty, "struct ", strlen("struct "))) {
-      Printf(f_wrappers, "(define %s-pointer (_pointer-to %s)\n", tdtype, ffitype);
-      Printf(f_wrappers, "(define %s-pointer/null (_pointer-to %s)\n", tdtype, ffitype);
+      String *name = NewString(Char(ty) + strlen("struct "));
+      if (1) {
+        // If the struct is not declared (by C), definitions of ffitype etc are
+        // inserted *before* this definition, which is okay.  If the struct is
+        // declared later, this causes a use-before-def of ffitype etc, which
+        // could be fixed by reordering the definitions.
+        Printf(f_wrappers, "(define %s %s)\n", tdtype, ffitype);
+        Printf(f_wrappers, "(define %s-pointer %s-pointer)\n", tdtype, ffitype);
+        Printf(f_wrappers, "(define %s-pointer/null %s-pointer/null)\n", tdtype, ffitype);
+        Setattr(used_structs, name, "1");
+      } else {
+        Printf(f_wrappers, "(define %s (begin _void #| incomplete type |#))\n", tdtype);
+        Printf(f_wrappers, "(define %s-pointer (_cpointer '%s))\n", tdtype, name);
+        Printf(f_wrappers, "(define %s-pointer/null (_cpointer/null '%s))\n", tdtype, name);
+      }
+      Printf(f_wrappers, "\n");
       add_known_type(tdtype, "struct");
     } else {
       add_known_type(tdtype, "typedef");
     }
-    Printf(f_wrappers, "\n");
   }
   return Language::typedefHandler(n);
 }
@@ -236,6 +257,38 @@ int RACKET::enumDeclaration(Node *n) {
   return SWIG_OK;
 }
 
+int RACKET::classforwardDeclaration(Node *n) {
+  String *name = Getattr(n, "sym:name");
+  String *kind = Getattr(n, "kind");
+  // Printf(stderr, "forward declaration of %s :: %s\n", name, kind);
+  if (!Strcmp(kind, "struct")) {
+    Setattr(used_structs, name, "1");
+  }
+  return SWIG_OK;
+}
+
+void RACKET::emit_forward_structs() {
+  Iterator iter;
+  int first = 1;
+  for (iter = First(used_structs); iter.item; iter = Next(iter)) {
+    if (!Getattr(defined_structs, iter.key)) {
+      if (first) {
+        first = 0;
+        Printf(f_header, "(module forward-struct-types racket/base\n");
+        Printf(f_header, "  (require ffi/unsafe)\n");
+        Printf(f_header, "  (provide (protect-out (all-defined-out)))");
+      }
+      // Printf(stderr, "declaring forward struct: %s\n", iter.key);
+      Printf(f_header, "\n\n");
+      Printf(f_header, "  (define _%s (begin _void #| incomplete type |#))\n", iter.key);
+      Printf(f_header, "  (define _%s-pointer (_cpointer '%s))\n", iter.key, iter.key);
+      Printf(f_header, "  (define _%s-pointer/null (_cpointer/null '%s))", iter.key, iter.key);
+    }
+  }
+  if (!first) {
+    Printf(f_header, ")\n(require (submod \".\" forward-struct-types))\n\n");
+  }
+}
 
 // Includes structs
 int RACKET::classDeclaration(Node *n) {
@@ -245,6 +298,7 @@ int RACKET::classDeclaration(Node *n) {
 
   if (!Strcmp(kind, "struct")) {
     Append(entries, NewStringf("make-%s", name));
+    Setattr(defined_structs, Getattr(n, "name"), "1");
 
     Printf(f_wrappers, "(define-cstruct %s\n", tyname);
     Printf(f_wrappers, "  (");
@@ -498,6 +552,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
 
     if (!Strncmp(str, "struct ", strlen("struct "))) {
       offset = strlen("struct ");
+      Setattr(used_structs, NewString(Char(str) + offset), "1");
     } else if (!Strncmp(str, "class ", strlen("class "))) {
       offset = strlen("class ");
     } else if (!Strncmp(str, "union ", strlen("union "))) {

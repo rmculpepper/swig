@@ -89,7 +89,4 @@
   (define (_pointer-to type) _pointer) ;; Hint: maybe use (_ptr ? type) instead
   (provide (protect-out (all-defined-out))))
 (require (submod "." ffi-type-util))
-
-(define-ffi-definer define-foreign
-  FIXME)
 %}
