@@ -216,13 +216,18 @@ int RACKET::variableWrapper(Node *n) {
   String *cname = Getattr(n, "name");
   String *lisp_type = get_ffi_type(n, Getattr(n, "type"));
 
-  Printf(f_wrappers, "(define-foreign %s %s", var_name, lisp_type);
-  if (Strcmp(var_name, cname)) {
-    Printf(f_wrappers, "\n  #:c-id %s", cname);
+  if (0) {
+    Printf(f_wrappers, "(define-foreign %s %s", var_name, lisp_type);
+    if (Strcmp(var_name, cname)) {
+      Printf(f_wrappers, "\n  #:c-id %s", cname);
+    }
+    write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"), var_name, cname);
+    write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"), var_name, cname);
+    Printf(f_wrappers, ")\n\n");
+  } else {
+    Printf(f_wrappers, "(define %s (make-c-parameter \"%s\" foreign-lib %s))\n\n",
+           var_name, cname, lisp_type);
   }
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"), var_name, cname);
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"), var_name, cname);
-  Printf(f_wrappers, ")\n\n");
 
   Append(entries, var_name);
 
