@@ -69,8 +69,8 @@
 /* Pointer types */
 
 %typemap(in) void * "_pointer";
-// %typemap(in) char * "_pointer";
-// %typemap(in) unsigned char * "_pointer";
+%typemap(in) char * "_pointer";
+%typemap(in) unsigned char * "_pointer";
 
 // %typemap(in) const void * "_pointer";
 // %typemap(in) const char * "_pointer";
