@@ -43,6 +43,7 @@ public:
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
+  void write_wrapper_options(File *f_out, String *opts);
   String *convert_literal(String *num_param, String *type);
   String *strip_parens(String *string);
   String *stringOfFunction(Node *n, ParmList *pl, String *restype, int indent);
@@ -141,19 +142,39 @@ int RACKET::functionWrapper(Node *n) {
     return SWIG_OK;
 
   String *func_name = Getattr(n, "sym:name");
+  String *cname = Getattr(n, "name");
   Append(entries, func_name);
 
   ParmList *pl = Getattr(n, "parms");
   String *restype = get_ffi_type(n, Getattr(n, "type"));
   String *expr = stringOfFunction(n, pl, restype, 2);
   Printf(f_wrappers, "(define-foreign %s\n", func_name);
-  Printf(f_wrappers, "  %s)\n\n", expr);
+  Printf(f_wrappers, "  %s)", expr);
+  if (Strcmp(func_name, cname)) {
+    Printf(f_wrappers, "\n  #:c-id %s", cname);
+  }
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:fun-options"));
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"));
+  Printf(f_wrappers, ")\n\n");
   Delete(expr);
   Delete(restype);
 
   return SWIG_OK;
 }
 
+void RACKET::write_wrapper_options(File *f_out, String *opts) {
+  if (opts && Strcmp(opts, "")) {
+    // Each line of opts SHOULD be indented two spaces.
+    // The last non-whitespace line of opts MUST NOT end in a line comment.
+    opts = Copy(opts);
+    Chop(opts);
+    if (Strncmp(opts, "\n", strlen("\n"))) {
+      Printf(f_out, "\n");
+    }
+    Printf(f_out, "%s", opts);
+    Delete(opts);
+  }
+}
 
 int RACKET::constantWrapper(Node *n) {
   String *type = Getattr(n, "type");
@@ -173,10 +194,17 @@ int RACKET::variableWrapper(Node *n) {
     return SWIG_OK;
 
   String *var_name = Getattr(n, "sym:name");
+  String *cname = Getattr(n, "name");
   String *lisp_type = get_ffi_type(n, Getattr(n, "type"));
 
-  Printf(f_wrappers, "(define-foreign %s %s)\n", var_name, lisp_type);
-  // FIXME: use #:c-id for overridden name
+  Printf(f_wrappers, "(define-foreign %s %s", var_name, lisp_type);
+  if (Strcmp(var_name, cname)) {
+    Printf(f_wrappers, "\n  #:c-id %s", cname);
+  }
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"));
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"));
+  Printf(f_wrappers, ")\n\n");
+
   Append(entries, var_name);
 
   Delete(lisp_type);
@@ -328,8 +356,9 @@ int RACKET::classDeclaration(Node *n) {
         Delete(lisp_type);
       }
     }
-
-    Printf(f_wrappers, "))\n\n");
+    Printf(f_wrappers, ")");
+    write_wrapper_options(f_wrappers, Getattr(n, "feature:struct-options"));
+    Printf(f_wrappers, ")\n\n");
 
     add_known_type(tyname, "struct");
     return SWIG_OK;
