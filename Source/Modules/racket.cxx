@@ -166,7 +166,7 @@ int RACKET::functionWrapper(Node *n) {
   String *restype = get_ffi_type(n, Getattr(n, "type"));
   String *expr = stringOfFunction(n, pl, restype, 2);
   Printf(f_wrappers, "(define-foreign %s\n", func_name);
-  Printf(f_wrappers, "  %s)", expr);
+  Printf(f_wrappers, "  %s", expr);
   if (Strcmp(func_name, cname)) {
     Printf(f_wrappers, "\n  #:c-id %s", cname);
   }
