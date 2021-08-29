@@ -43,7 +43,7 @@ public:
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
-  void write_wrapper_options(File *f_out, String *opts);
+  void write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname);
   String *convert_literal(String *num_param, String *type);
   String *strip_parens(String *string);
   String *stringOfFunction(Node *n, ParmList *pl, String *restype, int indent);
@@ -153,8 +153,8 @@ int RACKET::functionWrapper(Node *n) {
   if (Strcmp(func_name, cname)) {
     Printf(f_wrappers, "\n  #:c-id %s", cname);
   }
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:fun-options"));
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"));
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:fun-options"), func_name, cname);
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"), func_name, cname);
   Printf(f_wrappers, ")\n\n");
   Delete(expr);
   Delete(restype);
@@ -162,12 +162,14 @@ int RACKET::functionWrapper(Node *n) {
   return SWIG_OK;
 }
 
-void RACKET::write_wrapper_options(File *f_out, String *opts) {
+void RACKET::write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname) {
   if (opts && Strcmp(opts, "")) {
     // Each line of opts SHOULD be indented two spaces.
     // The last non-whitespace line of opts MUST NOT end in a line comment.
     opts = Copy(opts);
     Chop(opts);
+    if (ffiname) Replaceall(opts, "$wrapname", ffiname);
+    if (cname) Replaceall(opts, "$name", cname);
     if (Strncmp(opts, "\n", strlen("\n"))) {
       Printf(f_out, "\n");
     }
@@ -201,8 +203,8 @@ int RACKET::variableWrapper(Node *n) {
   if (Strcmp(var_name, cname)) {
     Printf(f_wrappers, "\n  #:c-id %s", cname);
   }
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"));
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"));
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"), var_name, cname);
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"), var_name, cname);
   Printf(f_wrappers, ")\n\n");
 
   Append(entries, var_name);
@@ -357,7 +359,8 @@ int RACKET::classDeclaration(Node *n) {
       }
     }
     Printf(f_wrappers, ")");
-    write_wrapper_options(f_wrappers, Getattr(n, "feature:struct-options"));
+    write_wrapper_options(f_wrappers, Getattr(n, "feature:struct-options"),
+                          tyname, Getattr(n, "name"));
     Printf(f_wrappers, ")\n\n");
 
     add_known_type(tyname, "struct");
