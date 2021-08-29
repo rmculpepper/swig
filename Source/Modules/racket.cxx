@@ -13,6 +13,23 @@
 
 #include "swigmod.h"
 
+/* TODO:
+ * - add options to _fun: prefix options, result expr, etc
+ * - function options:
+ *   - general prefix options, eg "#:save-errno 'posix"
+ *   - fixed value for argument, eg "[x : _int = 0]"
+ *   - result expression, eg "... -> [result : _int] -> (values (zero? int) outparam)"
+ *   - specify and handle out & inout params: "(_ptr o type)", etc
+ * - better, more consistent C->Racket expression handling
+ *   - detect #define right-hand sides that are not legal Racket
+ *     eg, "#define X (Y|0x01)"
+ *   - array dimensions
+ * - allow changing `define-foreign` name?
+ * - allow customizing provided names?
+ *   or put wrappers in submodule, let interface file re-export, add contracts, etc?
+ * - fix memory leaks
+ */
+
 static const char *usage = "\
 Racket Options (available with -racket)\n\
      -extern-all       - Create Racket definitions for all the functions and\n\
@@ -537,7 +554,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
       Delete(innertype);
     } else {
       String *innertype = get_ffi_type(n, ty);
-      result = NewStringf("(_array %s FIXME)", innertype);
+      result = NewStringf("(_array %s (FIXME #| %s |#))", innertype, array_dim);
       Delete(innertype);
     }
   }
@@ -595,7 +612,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     result = NewStringf("_%s", Char(str) + offset);
   }
   else {
-    result = NewStringf("(begin _FIXME #| UNKNOWN %s |#)", SwigType_str(ty, 0));
+    result = NewStringf("(_FIXME #| %s |#)", SwigType_str(ty, 0));
   }
 
   Delete(ty);
