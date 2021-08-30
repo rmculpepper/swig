@@ -277,6 +277,7 @@ int RACKET::typedefHandler(Node *n) {
       Printf(f_wrappers, "\n");
       add_known_type(tdtype, "struct");
     } else {
+      Printf(f_wrappers, "(define %s %s)\n", tdtype, ffitype);
       add_known_type(tdtype, "typedef");
     }
   }
