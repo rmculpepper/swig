@@ -869,6 +869,47 @@ mzscheme_clean:
 	rm -f *.@OBJEXT@ *$(MZSCHEME_SO)
 
 ##################################################################
+#####                       RACKET                          ######
+##################################################################
+
+RACKET = racket
+RACKET_SCRIPT = $(SRCDIR)$(RUNME).rkt
+
+# ----------------------------------------------------------------
+# Build a C/C++ dynamically loadable module
+# ----------------------------------------------------------------
+
+# Note: ISRCS, IOBJS not used.
+
+racket: $(SRCDIR_SRCS)
+	$(SWIG) -racket $(SWIGOPT) $(INTERFACEPATH)
+	$(CC) -c $(CCSHARED) $(CPPFLAGS) $(CFLAGS) $(SRCS) $(SRCDIR_SRCS) $(INCLUDES) $(JSINCLUDES)
+	$(LDSHARED) $(CFLAGS) $(LDFLAGS) $(OBJS) $(LIBS) -o $(LIBPREFIX)$(TARGET)$(SO)
+
+# -----------------------------------------------------------------
+# Run mzscheme example
+# -----------------------------------------------------------------
+
+racket_run:
+	env LD_LIBRARY_PATH=$$PWD $(RUNTOOL) $(RACKET) $(RACKET_SCRIPT) $(RUNPIPE)
+
+# -----------------------------------------------------------------
+# Version display
+# -----------------------------------------------------------------
+
+racket_version:
+	$(RACKET) -v
+
+# -----------------------------------------------------------------
+# Cleaning the mzscheme examples
+# -----------------------------------------------------------------
+
+racket_clean:
+	rm -f *_wrap* *~ .~*
+	rm -f core @EXTRA_CLEAN@
+	rm -f *.@OBJEXT@
+
+##################################################################
 #####                          Ocaml                         #####
 ##################################################################
 
