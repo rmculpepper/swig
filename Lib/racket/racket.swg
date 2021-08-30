@@ -32,6 +32,7 @@
 %typemap(in) unsigned long long "_ullong";
 
 %typemap(in) intptr_t "_intptr";
+%typemap(in) uintptr_t "_uintptr";
 
 %typemap(in) int8_t "_int8"
 %typemap(in) uint8_t "_uint8"
