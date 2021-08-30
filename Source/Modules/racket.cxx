@@ -11,6 +11,7 @@
  * Racket language module for SWIG.
  * ----------------------------------------------------------------------------- */
 
+#include <ctype.h>
 #include "swigmod.h"
 
 /* TODO:
@@ -58,6 +59,7 @@ public:
   virtual int typedefHandler(Node *n);
   List *entries;
 private:
+  String *adjust_param_tm(String *tm, int indent);
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
   void write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname);
@@ -102,8 +104,7 @@ void RACKET::add_known_type(String *type, const char *kind) {
 }
 
 int RACKET::is_known_struct_type(String *ffitype) {
-  String *kind = Getattr(known_types, ffitype);
-  return (kind != NULL) && !Strcmp(kind, "struct");
+  return checkAttribute(known_types, ffitype, "struct");
 }
 
 int RACKET::top(Node *n) {
@@ -163,6 +164,8 @@ int RACKET::functionWrapper(Node *n) {
   Append(entries, func_name);
 
   ParmList *pl = Getattr(n, "parms");
+  Swig_typemap_attach_parms("in", pl, 0);
+
   String *restype = get_ffi_type(n, Getattr(n, "type"));
   String *expr = stringOfFunction(n, pl, restype, 2);
   Printf(f_wrappers, "(define-foreign %s\n", func_name);
@@ -407,21 +410,43 @@ int RACKET::classDeclaration(Node *n) {
 
 String *RACKET::stringOfFunction(Node *n, ParmList *pl, String *restype, int indent) {
   String *out = NewString("");
-  int argnum = 0;
-
   Printf(out, "(_fun ");
-  for (Parm *p = pl; p; p = nextSibling(p), argnum++) {
+  Parm *p = pl;
+
+  while (p) {
     String *argname = Getattr(p, "name");
-    String *ffitype = get_ffi_type(n, Getattr(p, "type"));
-    if (argname) {
-      Printf(out, "[%s : %s]", argname, ffitype);
+    String *tm = Getattr(p, "tmap:in");
+    if (tm && !Strncmp(tm, "=", strlen("="))) {
+      String *args = adjust_param_tm(tm, (indent > 0) ? indent + 6 - 2 : indent);
+      Printf(out, "%s", args);
+      Delete(args);
+      p = Getattr(p, "tmap:in:next");
     } else {
-      Printf(out, "%s", ffitype);
+      String *ffitype = get_ffi_type(n, Getattr(p, "type"));
+      if (argname) {
+        Printf(out, "[%s : %s]", argname, ffitype);
+      } else {
+        Printf(out, "%s", ffitype);
+      }
+      p = nextSibling(p);
     }
     writeIndent(out, indent, 6);
   }
   Printf(out, "-> %s)", restype);
   return out;
+}
+
+String *RACKET::adjust_param_tm(String *tmin, int indent) {
+  char *s = Char(tmin) + strlen("=");
+  while (isspace(*s) || (*s == '\n')) { s++; } // FIXME: is isspace('\n') true?
+  String *tm = NewString(s);
+  Chop(tm);
+  if (indent >= 0) {
+    String *indentation = NewString("\n");
+    while (indent--) { Printf(indentation, " "); }
+    Replaceall(tm, "\n", indentation);
+  }
+  return tm;
 }
 
 String *RACKET::stringOfUnion(Node *n, int indent) {
