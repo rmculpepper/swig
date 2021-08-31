@@ -12,6 +12,7 @@
  * ----------------------------------------------------------------------------- */
 
 #include <ctype.h>
+#include <stdint.h>
 #include "swigmod.h"
 
 /* TODO:
@@ -61,6 +62,7 @@ private:
   String *get_mapped_type(Node *n, SwigType *ty);
   void write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname);
   String *convert_literal(String *num_param, String *type);
+  String *convert_integer_expr(char *s0);
   String *strip_parens(String *string);
   void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
   void write_function_prefix(File *out, String *prefix, int indent);
@@ -525,27 +527,15 @@ void RACKET::writeIndent(String *out, int indent, int moreindent) {
 /* utilities */
 /* returns new string w/ parens stripped */
 String *RACKET::strip_parens(String *string) {
-  char *s = Char(string), *p;
+  char *s = Char(string);
   int len = Len(string);
-  String *res;
-
   if (len == 0 || s[0] != '(' || s[len - 1] != ')') {
     return NewString(string);
+  } else {
+    String *res = NewString("");
+    Write(res, s + 1, len - 2);
+    return res;
   }
-
-  p = (char *) malloc(len - 2 + 1);
-  if (!p) {
-    Printf(stderr, "Malloc failed\n");
-    SWIG_exit(EXIT_FAILURE);
-  }
-
-  strncpy(p, s + 1, len - 1);
-  p[len - 2] = 0;		/* null terminate */
-
-  res = NewString(p);
-  free(p);
-
-  return res;
 }
 
 String *RACKET::convert_literal(String *num_param, String *type) {
@@ -558,20 +548,93 @@ String *RACKET::convert_literal(String *num_param, String *type) {
 
   if (SwigType_type(type) == T_CHAR) {
     /* Use Racket syntax for character literals */
-    return NewStringf("#\\%s", num_param);
+    res = NewStringf("#\\%s", num_param);
   } else if (SwigType_type(type) == T_STRING) {
     /* Use Racket syntax for string literals */
-    return NewStringf("\"%s\"", num_param);
+    // FIXME: needs escaping!
+    res = NewStringf("\"%s\"", num_param);
+  } else {
+    res = convert_integer_expr(s);
+  }
+  Delete(num);
+  return res;
+}
+
+String *RACKET::convert_integer_expr(char *s0) {
+  String *out = NewString("");
+  char *s = s0;
+  char *end = s + strlen(s);
+  intptr_t value = 0;
+  char sbuf[10];
+  int read = 0;
+  char op = 0;
+
+ READ_NUM:
+  sscanf(s, " %n", &read);
+  s = s + read; read = 0;
+  if (sscanf(s, "%ji%n", &value, &read) == 1) {
+    if (read == 1 || s[0] != '0') {
+      // decimal
+      Write(out, s, read);
+    } else if (s[1] == 'x' || s[1] == 'X') {
+      // hexadecimal
+      Printf(out, "#x");
+      Write(out, s + 2, read - 2);
+    } else {
+      // octal
+      Printf(out, "#o");
+      Write(out, s + 1, read - 1);
+    }
+    Printf(out, " ");
+    s = s + read;
+    goto READ_OP;
+  } else {
+    goto ERROR;
   }
 
-  if (Len(num) < 2 || s[0] != '0') {
-    /* decimal */
-    return num;
+ READ_OP:
+  sscanf(s, " %n", &read);
+  s = s + read; read = 0;
+  if (s == end) {
+    goto SUCCESS;
+  } else if (sscanf(s, "%1[|]%n", &sbuf[0], &read)) {
+    if (!op || op == '|') {
+      op = '|';
+      s = s + read;
+      goto READ_NUM;
+    } else {
+      goto ERROR;
+    }
+  } else if (sscanf(s, "%1[+]%n", &sbuf[0], &read)) {
+    if (!op || op == '+') {
+      op = '+';
+      s = s + read;
+      goto READ_NUM;
+    } else {
+      goto ERROR;
+    }
   } else {
-    /* octal or hex */
-    res = NewStringf("#%c%s", s[1] == 'x' ? 'x' : 'o', s + 2);
-    Delete(num);
-    return res;
+    goto ERROR;
+  }
+
+ ERROR:
+  Delete(out);
+  return NewStringf("(FIXME #| %s |#)", s0);
+
+ SUCCESS:
+  Chop(out);
+  if (op == 0) {
+    return out;
+  } else if (op == '|') {
+    String *result = NewStringf("(bitwise-ior %s)", out);
+    Delete(out);
+    return result;
+  } else if (op == '+') {
+    String *result = NewStringf("(+ %s)", out);
+    Delete(out);
+    return result;
+  } else {
+    goto ERROR;
   }
 }
 
