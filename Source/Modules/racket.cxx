@@ -15,7 +15,6 @@
 #include "swigmod.h"
 
 /* TODO:
- * - add options to _fun: prefix options, result expr, etc
  * - add variables to "in" typemap rhss, like $ffitype ?
  * - function options:
  *   - fixed value for argument, eg "[x : _int = 0]" -- possible via typemap(in)
