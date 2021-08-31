@@ -463,7 +463,7 @@ void RACKET::write_function_params(File *out, Node *n, ParmList *pl, int indent,
 String *RACKET::adjust_block(String *tmin, int indent) {
   char *s = Char(tmin);
   int len = Len(tmin);
-  if ((s[0] == '{') && (s[len - 1] == '}')) { s++; len = len - 2; }
+  // if ((s[0] == '{') && (s[len - 1] == '}')) { s++; len = len - 2; }
   while (isspace(s[0]) || (s[0] == '\n')) { s++; len--; } // FIXME: is isspace('\n') true?
   while (isspace(s[len - 1]) || (s[len - 1] == '\n')) { len--; }
   String *tm = NewString("");
