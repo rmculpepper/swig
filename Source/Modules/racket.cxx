@@ -18,10 +18,7 @@
  * - add options to _fun: prefix options, result expr, etc
  * - add variables to "in" typemap rhss, like $ffitype ?
  * - function options:
- *   - general prefix options, eg "#:save-errno 'posix"
- *   - fixed value for argument, eg "[x : _int = 0]"
- *   - result expression, eg "... -> [result : _int] -> (values (zero? int) outparam)"
- *   - specify and handle out & inout params: "(_ptr o type)", etc
+ *   - fixed value for argument, eg "[x : _int = 0]" -- possible via typemap(in)
  * - better, more consistent C->Racket expression handling
  *   - detect #define right-hand sides that are not legal Racket
  *     eg, "#define X (Y|0x01)"
@@ -60,13 +57,14 @@ public:
   virtual int typedefHandler(Node *n);
   List *entries;
 private:
-  String *adjust_param_tm(String *tm, int indent);
+  String *adjust_block(String *tm, int indent);
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
   void write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname);
   String *convert_literal(String *num_param, String *type);
   String *strip_parens(String *string);
-  String *stringOfFunction(Node *n, ParmList *pl, String *restype, int indent);
+  void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
+  void write_function_prefix(File *out, String *prefix, int indent);
   String *stringOfUnion(Node *n, int indent);
   void writeIndent(String *out, int indent, int moreindent);
   void add_known_type(String *ty, const char *kind);
@@ -166,21 +164,49 @@ int RACKET::functionWrapper(Node *n) {
 
   ParmList *pl = Getattr(n, "parms");
   Swig_typemap_attach_parms("in", pl, 0);
+  Swig_typemap_attach_parms("argout", pl, 0);
 
   String *restype = get_ffi_type(n, Getattr(n, "type"));
-  String *expr = stringOfFunction(n, pl, restype, 2);
+  List *argouts = NewList();
+  String *result_expr = Getattr(n, "feature:fun-result");
+
   Printf(f_wrappers, "(define-foreign %s\n", func_name);
-  Printf(f_wrappers, "  %s", expr);
+  Printf(f_wrappers, "  (_fun ");
+  write_function_prefix(f_wrappers, Getattr(n, "feature:fun-prefix"), 2 + strlen("(_fun "));
+  write_function_params(f_wrappers, n, pl, 2 + strlen("(_fun "), argouts);
+  if (result_expr) {
+    Printf(f_wrappers, "-> [result : %s]", restype);
+    writeIndent(f_wrappers, 2 + strlen("(_fun "), 0);
+    Printf(f_wrappers, "-> %s)", result_expr);
+  } else if (Len(argouts)) {
+    Printf(f_wrappers, "-> [result : %s]", restype);
+    writeIndent(f_wrappers, 2 + strlen("(_fun "), 0);
+    Printf(f_wrappers, "-> (values result");
+    for (Iterator iter = First(argouts); iter.item; iter = Next(iter)) {
+      Printf(f_wrappers, " %s", iter.item);
+    }
+    Printf(f_wrappers, ")");
+  } else {
+    Printf(f_wrappers, "-> %s)", restype);
+  }
   if (Strcmp(func_name, cname)) {
     Printf(f_wrappers, "\n  #:c-id %s", cname);
   }
   write_wrapper_options(f_wrappers, Getattr(n, "feature:fun-options"), func_name, cname);
   write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"), func_name, cname);
   Printf(f_wrappers, ")\n\n");
-  Delete(expr);
   Delete(restype);
 
   return SWIG_OK;
+}
+
+void RACKET::write_function_prefix(File *out, String *prefix, int indent) {
+  if (prefix && Strcmp(prefix, "")) {
+    String *adjprefix = adjust_block(prefix, indent);
+    Printf(out, "%s", adjprefix);
+    writeIndent(out, indent, 0);
+    Delete(adjprefix);
+  }
 }
 
 void RACKET::write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname) {
@@ -409,17 +435,15 @@ int RACKET::classDeclaration(Node *n) {
   }
 }
 
-
-String *RACKET::stringOfFunction(Node *n, ParmList *pl, String *restype, int indent) {
-  String *out = NewString("");
-  Printf(out, "(_fun ");
+void RACKET::write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts) {
   Parm *p = pl;
-
+  String *ao_tm;
   while (p) {
     String *argname = Getattr(p, "name");
     String *tm = Getattr(p, "tmap:in");
+    if ((ao_tm = Getattr(p, "tmap:argout"))) { Append(argouts, ao_tm); }
     if (tm) {
-      String *args = adjust_param_tm(tm, (indent > 0) ? indent + 6 - 2 : indent);
+      String *args = adjust_block(tm, indent);
       Printf(out, "%s", args);
       Delete(args);
       p = Getattr(p, "tmap:in:next");
@@ -432,23 +456,22 @@ String *RACKET::stringOfFunction(Node *n, ParmList *pl, String *restype, int ind
       }
       p = nextSibling(p);
     }
-    writeIndent(out, indent, 6);
+    writeIndent(out, indent, 0);
   }
-  Printf(out, "-> %s)", restype);
-  return out;
 }
 
-String *RACKET::adjust_param_tm(String *tmin, int indent) {
+String *RACKET::adjust_block(String *tmin, int indent) {
   char *s = Char(tmin);
   int len = Len(tmin);
   if ((s[0] == '{') && (s[len - 1] == '}')) { s++; len = len - 2; }
   while (isspace(s[0]) || (s[0] == '\n')) { s++; len--; } // FIXME: is isspace('\n') true?
-  while (isspace(s[len -1]) || (s[len - 1] == '\n')) { len--; }
+  while (isspace(s[len - 1]) || (s[len - 1] == '\n')) { len--; }
   String *tm = NewString("");
   Write(tm, s, len);
   // Chop(tm);
   if (indent >= 0) {
     String *indentation = NewString("\n");
+    indent = indent - 2; // expected starting indentation
     while (indent--) { Printf(indentation, " "); }
     Replaceall(tm, "\n", indentation);
   }
@@ -595,14 +618,17 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     }
   }
   else if (SwigType_isfunction(ty)) {
-    // return NewStringf("_fpointer");
+    // Unlike function decl, don't use "in", "argout" typemaps.
     SwigType *fn = SwigType_pop_function(ty);
     ParmList *pl = SwigType_function_parms(fn, n);
     String *restype = get_ffi_type(n, ty);
-    String *expr = stringOfFunction(n, pl, restype, -1);
+    String *out = NewString("");
+    Printf(out, "(_fun ");
+    write_function_params(out, n, pl, -1, NULL);
+    Printf(out, "-> %s)", restype);
     Delete(fn);
     Delete(restype);
-    return expr;
+    return out;
   }
   else if (SwigType_ispointer(ty)) {
     String *inner;
