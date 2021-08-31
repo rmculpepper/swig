@@ -16,6 +16,7 @@
 
 /* TODO:
  * - add options to _fun: prefix options, result expr, etc
+ * - add variables to "in" typemap rhss, like $ffitype ?
  * - function options:
  *   - general prefix options, eg "#:save-errno 'posix"
  *   - fixed value for argument, eg "[x : _int = 0]"
@@ -417,7 +418,7 @@ String *RACKET::stringOfFunction(Node *n, ParmList *pl, String *restype, int ind
   while (p) {
     String *argname = Getattr(p, "name");
     String *tm = Getattr(p, "tmap:in");
-    if (tm && !Strncmp(tm, "=", strlen("="))) {
+    if (tm) {
       String *args = adjust_param_tm(tm, (indent > 0) ? indent + 6 - 2 : indent);
       Printf(out, "%s", args);
       Delete(args);
@@ -438,10 +439,14 @@ String *RACKET::stringOfFunction(Node *n, ParmList *pl, String *restype, int ind
 }
 
 String *RACKET::adjust_param_tm(String *tmin, int indent) {
-  char *s = Char(tmin) + strlen("=");
-  while (isspace(*s) || (*s == '\n')) { s++; } // FIXME: is isspace('\n') true?
-  String *tm = NewString(s);
-  Chop(tm);
+  char *s = Char(tmin);
+  int len = Len(tmin);
+  if ((s[0] == '{') && (s[len - 1] == '}')) { s++; len = len - 2; }
+  while (isspace(s[0]) || (s[0] == '\n')) { s++; len--; } // FIXME: is isspace('\n') true?
+  while (isspace(s[len -1]) || (s[len - 1] == '\n')) { len--; }
+  String *tm = NewString("");
+  Write(tm, s, len);
+  // Chop(tm);
   if (indent >= 0) {
     String *indentation = NewString("\n");
     while (indent--) { Printf(indentation, " "); }
@@ -553,7 +558,7 @@ String *RACKET::get_mapped_type(Node *n, SwigType *ty) {
   Setattr(node, "type", ty);
   Setfile(node, Getfile(n));
   Setline(node, Getline(n));
-  const String *tm = Swig_typemap_lookup("in", node, "", 0);
+  const String *tm = Swig_typemap_lookup("ffi", node, "", 0);
   Delete(node);
   return tm ? NewString(tm) : NULL;
 }

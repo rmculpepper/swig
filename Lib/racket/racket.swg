@@ -9,73 +9,73 @@
 
 /* Integer types */
 
-%typemap(in) char "_byte";
-%typemap(in) signed char "_byte";
-%typemap(in) unsigned char "_ubyte";
+%typemap(ffi) char "_byte";
+%typemap(ffi) signed char "_byte";
+%typemap(ffi) unsigned char "_ubyte";
 
-%typemap(in) wchar_t "_wchar"
+%typemap(ffi) wchar_t "_wchar"
 
-%typemap(in) short "_short";
-%typemap(in) signed short "_short";
-%typemap(in) unsigned short "_ushort";
+%typemap(ffi) short "_short";
+%typemap(ffi) signed short "_short";
+%typemap(ffi) unsigned short "_ushort";
 
-%typemap(in) int "_int";
-%typemap(in) signed int "_int";
-%typemap(in) unsigned int "_uint";
+%typemap(ffi) int "_int";
+%typemap(ffi) signed int "_int";
+%typemap(ffi) unsigned int "_uint";
 
-%typemap(in) long "_long";
-%typemap(in) signed long "_long";
-%typemap(in) unsigned long "_ulong";
+%typemap(ffi) long "_long";
+%typemap(ffi) signed long "_long";
+%typemap(ffi) unsigned long "_ulong";
 
-%typemap(in) long long "_llong";
-%typemap(in) signed long long "_llong";
-%typemap(in) unsigned long long "_ullong";
+%typemap(ffi) long long "_llong";
+%typemap(ffi) signed long long "_llong";
+%typemap(ffi) unsigned long long "_ullong";
 
-%typemap(in) intptr_t "_intptr";
-%typemap(in) uintptr_t "_uintptr";
+%typemap(ffi) intptr_t "_intptr";
+%typemap(ffi) uintptr_t "_uintptr";
 
-%typemap(in) int8_t "_int8"
-%typemap(in) uint8_t "_uint8"
+%typemap(ffi) int8_t "_int8"
+%typemap(ffi) uint8_t "_uint8"
 
-%typemap(in) int16_t "_int16"
-%typemap(in) uint16_t "_uint16"
+%typemap(ffi) int16_t "_int16"
+%typemap(ffi) uint16_t "_uint16"
 
-%typemap(in) int32_t "_int32"
-%typemap(in) uint32_t "_uint32"
+%typemap(ffi) int32_t "_int32"
+%typemap(ffi) uint32_t "_uint32"
 
-%typemap(in) int64_t "_int64"
-%typemap(in) uint64_t "_uint64"
+%typemap(ffi) int64_t "_int64"
+%typemap(ffi) uint64_t "_uint64"
 
-%typemap(in) size_t "_size"
-%typemap(in) ssize_t "_ssize"
-%typemap(in) ptrdiff_t "_ptrdiff"
+%typemap(ffi) size_t "_size"
+%typemap(ffi) ssize_t "_ssize"
+%typemap(ffi) ptrdiff_t "_ptrdiff"
 
 // _intmax
 // _uintmax
 
 /* Floating-point types */
 
-%typemap(in) float "_float";
-%typemap(in) double "_double";
-// %typemap(in) double "_double*";
+%typemap(ffi) float "_float";
+%typemap(ffi) double "_double";
+// %typemap(ffi) double "_double*";
 
-%typemap(in) long double "_longdouble"
+%typemap(ffi) long double "_longdouble"
 
 /* Other atomic types */
 
-%typemap(in) bool "_stdbool"
+%typemap(ffi) bool "_stdbool"
 
-%typemap(in) void "_void";
+%typemap(ffi) void "_void";
 
 /* Pointer types */
 
-%typemap(in) void * "_pointer";
-%typemap(in) char * "_pointer";
-%typemap(in) unsigned char * "_pointer";
+%typemap(ffi) void * "_pointer";
+%typemap(ffi) char * "_pointer";
+%typemap(ffi) unsigned char * "_pointer";
 
-// %typemap(in) const void * "_pointer";
-// %typemap(in) const char * "_pointer";
-// %typemap(in) const unsigned char * "_pointer";
+// %typemap(ffi) const void * "_pointer";
+// %typemap(ffi) const char * "_pointer";
+// %typemap(ffi) const unsigned char * "_pointer";
 
 /* ======================================== */
 /* Code inserts */
