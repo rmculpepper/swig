@@ -13,7 +13,6 @@ compatible with those produced by `define-ffi-definer`. For example:
       #:default-make-fail make-not-available)
     %}
 
-
 ## Translations
 
 ### Defined constants
@@ -24,13 +23,50 @@ not be well-formed.
 
 ### Variables
 
-A variable is translated to
+A variable is translated to a procedure created using
+`make-c-parameter`. Calling the procedure with zero arguments retrieves the
+variable's current value, and calling it with one argument updates the
+variable's value.
 
-FIXME: const variables, don't set...
+FIXME: options?
 
 ### Functions
 
-A function is translated
+A function is translated to a procedure defined using `define-foreign` and a
+`_fun` type. The formal parameters are translated to `_fun` argument clauses;
+the default translation produces a clause of the following shape for each
+parameter:
+
+    [$argname : $ffitype]   // if the parameter name $argname is given
+    $ffitype                // if the parameter name is not given
+
+The translation of parameters to clauses can be overridden with the "in"
+typemap, which allows multi-parameter mappings. The mapping must produce as many
+argument clauses as there are parameters in the C declaration. For example, here
+is a multi-parameter typemap that converts a single Racket argument (a list) to
+a pair of length and array arguments to the foreign function:
+
+    %typemap(in) (int argc, char *argv[]) %{
+      [$1_name : _int = (length $2_name)]
+      [$2_name : (_list i _string)]
+    %}
+
+
+FIXME: output template
+
+    (define-foreign $rktname
+      (_fun $fun-prefix
+            $param-clause ...
+            -> [result : $result-type]
+            -> $result-expr)
+      #:c-id $cname
+      $fun-options)
+
+- The `-> $result-expr` is omitted if it is not overridden by the "fun-result"
+  feature or "argout" typemap.
+- The `[result : $result-type]` is simplified to `$result-type` if the `->
+  $result-expr` is omitted.
+- The `#:c-id` declaration is omitted if there is no renaming.
 
 ## Types
 
@@ -40,8 +76,6 @@ by the translator. The special handling cannot be scripted by interface modules.
 
 Racket's "ffi" typemap maps a C type to a Racket expression that evaluates to an
 FFI type descriptor (satisfying the `ctype?` predicate).
-
-FIXME: see also "in" typemap entries
 
 ### Builtin typemap
 
@@ -209,7 +243,7 @@ where `target-type` is the translation of the target type. Note, however, that
 `_pointer-to` is a constant function that always produces `_pointer`; the
 `target-type` is included to aid manual editing of the resulting code.
 
-    int *               => (_pointer-to _int)
+    int *               =>  (_pointer-to _int)  =  _pointer
 
 
 
@@ -235,12 +269,32 @@ following Racket wrapper:
       (_fun [outparam : (_pointer-to _int)]
             -> _void))
 
-%typemap("in") int *outparam %{=
-  [outparam : (_ptr o _int)]
-%}
-%feature("fun-result") f "outparam";
+The argument can be treated as an out-parameter by using the "in" typemap to
+override the default parameter clause to use the `(_ptr o ___)` argument syntax:
 
-%feature("fun-prefix") f "(x y z) ::";
-%feature("fun-result") f "(values $result outparam)";
+    %typemap("in") int *outparam %{
+      [outparam : (_ptr o _int)]
+    %}
 
-Idea: use "in" typemap for parameters *only*; use "ffi" typemap for general conversions.
+And the result of the wrapper can be set using the "fun-result" feature:
+
+    %feature("fun-result") f "outparam";
+
+As an alternative, the argument can be automatically added to the function
+result values by using the "argout" typemap. In this example, that would cause
+`f` to return two values, the first of which is always `(void)`, so it makes
+more sense to use the "fun-result" feature to replace the result expression
+entirely.
+
+    %typemap("argout") int *outparam "outparam";
+    // %typemap("argout") int *outparam "$1_name";  // alternative
+
+
+## Summary of wrapper options
+
+FIXME: clarify
+- code is expr vs list of clauses vs etc, other constraints
+- what variables are bound in each block?
+
+    %feature("fun-prefix") f "(x y z) ::";
+    %feature("fun-result") f "(values $result outparam)";
