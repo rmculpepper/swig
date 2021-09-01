@@ -9,78 +9,78 @@
 
 /* Integer types */
 
-%typemap(ffi) char "_byte";
-%typemap(ffi) signed char "_byte";
-%typemap(ffi) unsigned char "_ubyte";
+%typemap(rktffi) char "_byte";
+%typemap(rktffi) signed char "_byte";
+%typemap(rktffi) unsigned char "_ubyte";
 
-%typemap(ffi) wchar_t "_wchar"
+%typemap(rktffi) wchar_t "_wchar"
 
-%typemap(ffi) short "_short";
-%typemap(ffi) signed short "_short";
-%typemap(ffi) unsigned short "_ushort";
+%typemap(rktffi) short "_short";
+%typemap(rktffi) signed short "_short";
+%typemap(rktffi) unsigned short "_ushort";
 
-%typemap(ffi) int "_int";
-%typemap(ffi) signed int "_int";
-%typemap(ffi) unsigned int "_uint";
+%typemap(rktffi) int "_int";
+%typemap(rktffi) signed int "_int";
+%typemap(rktffi) unsigned int "_uint";
 
-%typemap(ffi) long "_long";
-%typemap(ffi) signed long "_long";
-%typemap(ffi) unsigned long "_ulong";
+%typemap(rktffi) long "_long";
+%typemap(rktffi) signed long "_long";
+%typemap(rktffi) unsigned long "_ulong";
 
-%typemap(ffi) long long "_llong";
-%typemap(ffi) signed long long "_llong";
-%typemap(ffi) unsigned long long "_ullong";
+%typemap(rktffi) long long "_llong";
+%typemap(rktffi) signed long long "_llong";
+%typemap(rktffi) unsigned long long "_ullong";
 
-%typemap(ffi) intptr_t "_intptr";
-%typemap(ffi) uintptr_t "_uintptr";
+%typemap(rktffi) intptr_t "_intptr";
+%typemap(rktffi) uintptr_t "_uintptr";
 
-%typemap(ffi) int8_t "_int8"
-%typemap(ffi) uint8_t "_uint8"
+%typemap(rktffi) int8_t "_int8"
+%typemap(rktffi) uint8_t "_uint8"
 
-%typemap(ffi) int16_t "_int16"
-%typemap(ffi) uint16_t "_uint16"
+%typemap(rktffi) int16_t "_int16"
+%typemap(rktffi) uint16_t "_uint16"
 
-%typemap(ffi) int32_t "_int32"
-%typemap(ffi) uint32_t "_uint32"
+%typemap(rktffi) int32_t "_int32"
+%typemap(rktffi) uint32_t "_uint32"
 
-%typemap(ffi) int64_t "_int64"
-%typemap(ffi) uint64_t "_uint64"
+%typemap(rktffi) int64_t "_int64"
+%typemap(rktffi) uint64_t "_uint64"
 
-%typemap(ffi) size_t "_size"
-%typemap(ffi) ssize_t "_ssize"
-%typemap(ffi) ptrdiff_t "_ptrdiff"
+%typemap(rktffi) size_t "_size"
+%typemap(rktffi) ssize_t "_ssize"
+%typemap(rktffi) ptrdiff_t "_ptrdiff"
 
 // _intmax
 // _uintmax
 
 /* Floating-point types */
 
-%typemap(ffi) float "_float";
-%typemap(ffi) double "_double";
-// %typemap(ffi) double "_double*";
+%typemap(rktffi) float "_float";
+%typemap(rktffi) double "_double";
+// %typemap(rktffi) double "_double*";
 
-%typemap(ffi) long double "_longdouble"
+%typemap(rktffi) long double "_longdouble"
 
 /* Other atomic types */
 
-%typemap(ffi) bool "_stdbool"
+%typemap(rktffi) bool "_stdbool"
 
-%typemap(ffi) void "_void";
+%typemap(rktffi) void "_void";
 
 /* Pointer types */
 
-%typemap(ffi) void * "_pointer";
-%typemap(ffi) char * "_pointer";
-%typemap(ffi) unsigned char * "_pointer";
+%typemap(rktffi) void * "_pointer";
+%typemap(rktffi) char * "_pointer";
+%typemap(rktffi) unsigned char * "_pointer";
 
-// %typemap(ffi) const void * "_pointer";
-// %typemap(ffi) const char * "_pointer";
-// %typemap(ffi) const unsigned char * "_pointer";
+// %typemap(rktffi) const void * "_pointer";
+// %typemap(rktffi) const char * "_pointer";
+// %typemap(rktffi) const unsigned char * "_pointer";
 
 /* ======================================== */
 /* Code inserts */
 
-%insert("header") %{
+%insert("rktheader") %{
 #lang racket/base
 (require ffi/unsafe ffi/unsafe/define)
 (provide (protect-out (all-defined-out)))
