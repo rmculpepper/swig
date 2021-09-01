@@ -65,6 +65,7 @@ skip-python	= test -n "@SKIP_PYTHON@"
 skip-java	= test -n "@SKIP_JAVA@"
 skip-guile	= test -n "@SKIP_GUILE@"
 skip-mzscheme	= test -n "@SKIP_MZSCHEME@"
+skip-racket	= test -n "@SKIP_RACKET@"
 skip-ruby	= test -n "@SKIP_RUBY@"
 skip-php	= test -n "@SKIP_PHP@"
 skip-ocaml      = test -n "@SKIP_OCAML@"
@@ -106,6 +107,7 @@ check-aliveness:
 	@$(skip-java)     || ./$(TARGET) -java       -help
 	@$(skip-guile)    || ./$(TARGET) -guile      -help
 	@$(skip-mzscheme) || ./$(TARGET) -mzscheme   -help
+	@$(skip-racket)   || ./$(TARGET) -racket     -help
 	@$(skip-ruby)     || ./$(TARGET) -ruby       -help
 	@$(skip-ocaml)    || ./$(TARGET) -ocaml      -help
 	@$(skip-octave)   || ./$(TARGET) -octave     -help
@@ -131,6 +133,7 @@ check-versions:					\
 	check-android-version			\
 	check-guile-version			\
 	check-mzscheme-version			\
+	check-racket-version			\
 	check-ruby-version			\
 	check-ocaml-version			\
 	check-octave-version			\
@@ -164,6 +167,7 @@ check-examples:					\
 	check-android-examples			\
 	check-guile-examples			\
 	check-mzscheme-examples			\
+	check-racket-examples			\
 	check-ruby-examples			\
 	check-ocaml-examples			\
 	check-octave-examples			\
@@ -183,6 +187,7 @@ java_examples      :=$(shell sed '/^\#/d' $(srcdir)/Examples/java/check.list)
 android_examples   :=$(shell sed '/^\#/d' $(srcdir)/Examples/android/check.list)
 guile_examples     :=$(shell sed '/^\#/d' $(srcdir)/Examples/guile/check.list)
 mzscheme_examples  :=$(shell sed '/^\#/d' $(srcdir)/Examples/mzscheme/check.list)
+racket_examples    :=$(shell sed '/^\#/d' $(srcdir)/Examples/racket/check.list)
 ruby_examples      :=$(shell sed '/^\#/d' $(srcdir)/Examples/ruby/check.list)
 ocaml_examples     :=$(shell sed '/^\#/d' $(srcdir)/Examples/ocaml/check.list)
 octave_examples    :=$(shell sed '/^\#/d' $(srcdir)/Examples/octave/check.list)

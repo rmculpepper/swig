@@ -1933,6 +1933,25 @@ fi
 AC_SUBST(MZDYNOBJ)
 
 #----------------------------------------------------------------
+# Look for MzScheme
+#----------------------------------------------------------------
+
+AC_ARG_WITH(racket, AS_HELP_STRING([--without-racket], [Disable Racket])
+AS_HELP_STRING([--with-racket=path], [Set location of Racket executable]),[ RACKETBIN="$withval"], [RACKETBIN="$alllang_default"])
+
+# First, check for "--without-mzscheme" or "--with-mzscheme=no".
+if test x"${RACKETBIN}" = xno; then
+  AC_MSG_NOTICE([Disabling Racket])
+else
+  if test "x$RACKETBIN" = xyes; then
+     AC_PATH_PROG(RACKET, racket)
+  else
+     RACKET="$RACKETBIN"
+  fi
+
+fi
+
+#----------------------------------------------------------------
 # Look for Ruby
 #----------------------------------------------------------------
 
@@ -2897,6 +2916,7 @@ test -n "$SKIP_JAVA"		|| langs="${langs}java "
 test -n "$SKIP_JAVASCRIPT"	|| langs="${langs}javascript "
 test -n "$SKIP_LUA"		|| langs="${langs}lua "
 test -n "$SKIP_MZSCHEME"	|| langs="${langs}mzscheme "
+test -n "$SKIP_RACKET"	        || langs="${langs}racket "
 test -n "$SKIP_OCAML"		|| langs="${langs}ocaml "
 test -n "$SKIP_OCTAVE"		|| langs="${langs}octave "
 test -n "$SKIP_PERL5"		|| langs="${langs}perl5 "

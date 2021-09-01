@@ -905,7 +905,7 @@ racket_version:
 # -----------------------------------------------------------------
 
 racket_clean:
-	rm -f *_wrap* *~ .~*
+	rm -f *_wrap* *~ .~* $(TARGET).rkt
 	rm -f core @EXTRA_CLEAN@
 	rm -f *.@OBJEXT@
 
