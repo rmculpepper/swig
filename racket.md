@@ -3,12 +3,12 @@
 
 ## Obligations
 
-The interface module must insert into the "header" section a definition of
+The interface module must insert into the "rktheader" section a definition of
 `foreign-lib` and `define-foreign`, where `foreign-lib` is a variable whose
 value is the FFI library reference and `define-foreign` is a definition form
 compatible with those produced by `define-ffi-definer`. For example:
 
-    %insert("header") %{
+    %insert("rktheader") %{
     (define foreign-lib (ffi-lib "libexample.so"))
     (define-ffi-definer define-foreign foreign-lib
       #:default-make-fail make-not-available)
@@ -23,18 +23,28 @@ The translations of type declarations are discussed in the "Types" section.
 
 ### Constant definitions
 
-A `#define` constant is translated to an ordinary definition. Beware that if the
-right-hand side is not a simple numeric or string literal, the expression will
-not be well-formed.
+A `#define` constant is translated to a Racket variable definition. If the
+translator cannot handle the right-hand side (for example, if it is a nontrivial
+arithmetic expression), it emits a Racket expression that calls a fictitious
+`FIXME` Racket function.
 
 ### Variable declarations
 
-A variable is translated to a procedure created using
+A variable is translated to a procedure similar to those created by
 `make-c-parameter`. Calling the procedure with zero arguments retrieves the
 variable's current value, and calling it with one argument updates the
 variable's value.
 
-FIXME: options?
+A variable wrapper can also be customized by the `%rename` directive and the
+"var-options" feature, which can contain either `#:fail` or `#:make-fail`
+keyword arguments, similar to those supported by the result of
+`define-ffi-definer`. For example:
+
+    %feature("var-options") undef_var "#:fail (lambda () #f)"
+    int undef_var;
+
+If the foreign library does not contain `undef_var`, the Racket `undef_var`
+variable will get the value `#f` instead of a getter/setter procedure.
 
 ### Function declarations
 
@@ -46,19 +56,20 @@ parameter:
     [$argname : $ffitype]   // if the parameter name $argname is given
     $ffitype                // if the parameter name is not given
 
-The translation of parameters to clauses can be overridden with the "in"
-typemap, which allows multi-parameter mappings. The mapping must produce as many
-argument clauses as there are parameters in the C declaration. For example, here
-is a multi-parameter typemap that converts a single Racket argument (a list) to
-a pair of length and array arguments to the foreign function:
+The translation of parameters to clauses can be overridden with the "rktin"
+typemap, which also allows multi-parameter mappings. The mapping must produce as
+many argument clauses as there are parameters in the C declaration. For example,
+here is a multi-parameter typemap that converts a single Racket argument (a
+list) to a pair of length and array arguments to the foreign function:
 
-    %typemap(in) (int argc, char *argv[]) %{
+    %typemap(rktin) (int argc, char *argv[]) %{
       [$1_name : _int = (length $2_name)]
       [$2_name : (_list i _string)]
     %}
 
-
-FIXME: output template
+A function wrapper can also be customized by the `%rename` directive, the
+"fun-prefix" feature, the "fun-result" feature, and the "fun-options"
+feature. The following is the general template of a function wrapper:
 
     (define-foreign $rktname
       (_fun $fun-prefix
@@ -78,11 +89,12 @@ FIXME: output template
 ## Types
 
 The translation of C types to Racket FFI type descriptors is done by the
-non-standard "ffi" typemap, but types that have no mapping are handled specially
-by the translator. The special handling cannot be scripted by interface modules.
+non-standard "rktffi" typemap, but types that have no mapping are handled
+specially by the translator. The special handling cannot be scripted by
+interface modules.
 
-Racket's "ffi" typemap maps a C type to a Racket expression that evaluates to an
-FFI type descriptor (satisfying the `ctype?` predicate).
+Racket's "rktffi" typemap maps a C type to a Racket expression that evaluates to
+an FFI type descriptor (satisfying the `ctype?` predicate).
 
 ### Builtin typemap
 
@@ -90,71 +102,71 @@ This section shows the built-in type mappings in Lib/racket/racket.swg:
 
     /* Integer types */
 
-    %typemap(ffi) char "_byte";
-    %typemap(ffi) signed char "_byte";
-    %typemap(ffi) unsigned char "_ubyte";
+    %typemap(rktffi) char "_byte";
+    %typemap(rktffi) signed char "_byte";
+    %typemap(rktffi) unsigned char "_ubyte";
 
-    %typemap(ffi) wchar_t "_wchar"
+    %typemap(rktffi) wchar_t "_wchar"
 
-    %typemap(ffi) short "_short";
-    %typemap(ffi) signed short "_short";
-    %typemap(ffi) unsigned short "_ushort";
+    %typemap(rktffi) short "_short";
+    %typemap(rktffi) signed short "_short";
+    %typemap(rktffi) unsigned short "_ushort";
 
-    %typemap(ffi) int "_int";
-    %typemap(ffi) signed int "_int";
-    %typemap(ffi) unsigned int "_uint";
+    %typemap(rktffi) int "_int";
+    %typemap(rktffi) signed int "_int";
+    %typemap(rktffi) unsigned int "_uint";
 
-    %typemap(ffi) long "_long";
-    %typemap(ffi) signed long "_long";
-    %typemap(ffi) unsigned long "_ulong";
+    %typemap(rktffi) long "_long";
+    %typemap(rktffi) signed long "_long";
+    %typemap(rktffi) unsigned long "_ulong";
 
-    %typemap(ffi) long long "_llong";
-    %typemap(ffi) signed long long "_llong";
-    %typemap(ffi) unsigned long long "_ullong";
+    %typemap(rktffi) long long "_llong";
+    %typemap(rktffi) signed long long "_llong";
+    %typemap(rktffi) unsigned long long "_ullong";
 
-    %typemap(ffi) intptr_t "_intptr";
-    %typemap(ffi) uintptr_t "_uintptr";
+    %typemap(rktffi) intptr_t "_intptr";
+    %typemap(rktffi) uintptr_t "_uintptr";
 
-    %typemap(ffi) int8_t "_int8"
-    %typemap(ffi) uint8_t "_uint8"
+    %typemap(rktffi) int8_t "_int8"
+    %typemap(rktffi) uint8_t "_uint8"
 
-    %typemap(ffi) int16_t "_int16"
-    %typemap(ffi) uint16_t "_uint16"
+    %typemap(rktffi) int16_t "_int16"
+    %typemap(rktffi) uint16_t "_uint16"
 
-    %typemap(ffi) int32_t "_int32"
-    %typemap(ffi) uint32_t "_uint32"
+    %typemap(rktffi) int32_t "_int32"
+    %typemap(rktffi) uint32_t "_uint32"
 
-    %typemap(ffi) int64_t "_int64"
-    %typemap(ffi) uint64_t "_uint64"
+    %typemap(rktffi) int64_t "_int64"
+    %typemap(rktffi) uint64_t "_uint64"
 
-    %typemap(ffi) size_t "_size"
-    %typemap(ffi) ssize_t "_ssize"
-    %typemap(ffi) ptrdiff_t "_ptrdiff"
+    %typemap(rktffi) size_t "_size"
+    %typemap(rktffi) ssize_t "_ssize"
+    %typemap(rktffi) ptrdiff_t "_ptrdiff"
 
     /* Floating-point types */
 
-    %typemap(ffi) float "_float";
-    %typemap(ffi) double "_double";
-    %typemap(ffi) long double "_longdouble"
+    %typemap(rktffi) float "_float";
+    %typemap(rktffi) double "_double";
+    %typemap(rktffi) long double "_longdouble"
 
     /* Other atomic types */
 
-    %typemap(ffi) bool "_stdbool"
+    %typemap(rktffi) bool "_stdbool"
 
-    %typemap(ffi) void "_void";
+    %typemap(rktffi) void "_void";
 
     /* Pointer types */
 
-    %typemap(ffi) void * "_pointer";
-    %typemap(ffi) char * "_pointer";
-    %typemap(ffi) unsigned char * "_pointer";
+    %typemap(rktffi) void * "_pointer";
+    %typemap(rktffi) char * "_pointer";
+    %typemap(rktffi) unsigned char * "_pointer";
 
 The default FFI type for `double` accepts only Racket floating-point numbers. To
 automatically coerce other number (such as exact integers and rationals) to
 floating point, use `_double*` instead by using the following declaration:
 
     // Include in your interface module:
-    %typemap(ffi) double "_double*";
+    %typemap(rktffi) double "_double*";
 
 ### Struct types
 
@@ -174,10 +186,13 @@ The Racket definition defines three FFI types:
 - `_point_st-pointer/null` is an FFI type for nullable pointers to instances; it
   corresponds to `struct point_st *` and allows NULL (represented by `#f`)
 
-The definition also produces many additional names; see the documentation of
-`define-cstruct` for details.
+Racket pointers carry tags, and `_point_st-pointer/null` requires a pointer
+argument to have the corresponding tag (`point_st-tag`, which has the value
+`'point_st`). See the Racket FFI documentation for details.
 
-The translator records defined struct names; see the Typedefs section.
+The translator records known struct names; this information is used by the
+translation of pointer types (see the "Pointer types" section), and it is
+propagated by typedefs (see the "Typedefs" section).
 
 ### Typedefs
 
@@ -231,7 +246,7 @@ A C enumeration declaration is translated to a Racket definition using `_enum`:
 
 ### Pointer types
 
-A C pointer type is translated differently according to the target type.
+The translation of a C pointer type depends on the target type.
 
 If the target type is typemapped to a Racket FFI type for a known struct type
 (or typedef to a known struct type), then the associated nullable pointer type
@@ -252,9 +267,19 @@ where `target-type` is the translation of the target type. Note, however, that
 
     int *               =>  (_pointer-to _int)  =  _pointer
 
+Qualifiers like `const` are discarded. The generated Racket code does not
+respect mutation restrictions based on `const`.
 
 
-## Misc
+## Misc notes
+
+If the translator cannot translate an expression (such as the right-hand side of
+a `#define`), it emits a call to an unbound `FIXME` Racket function.
+
+If the translator cannot translate a type, it emits a call to an unbound
+`_FIXME` function.
+
+A "block" ... FIXME
 
 ### Out parameters
 
@@ -276,10 +301,10 @@ following Racket wrapper:
       (_fun [outparam : (_pointer-to _int)]
             -> _void))
 
-The argument can be treated as an out-parameter by using the "in" typemap to
+The argument can be treated as an out-parameter by using the "rktin" typemap to
 override the default parameter clause to use the `(_ptr o ___)` argument syntax:
 
-    %typemap("in") int *outparam %{
+    %typemap(rktin) int *outparam %{
       [outparam : (_ptr o _int)]
     %}
 
@@ -293,11 +318,11 @@ result values by using the "argout" typemap. In this example, that would cause
 more sense to use the "fun-result" feature to replace the result expression
 entirely.
 
-    %typemap("argout") int *outparam "outparam";
-    // %typemap("argout") int *outparam "$1_name";  // alternative
+    %typemap("rktargout") int *outparam "outparam";
+    // %typemap("rktargout") int *outparam "$1_name";  // alternative
 
 
-## Summary of wrapper options
+### Summary of wrapper options
 
 FIXME: clarify
 - code is expr vs list of clauses vs etc, other constraints
