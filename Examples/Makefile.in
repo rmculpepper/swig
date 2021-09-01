@@ -882,9 +882,12 @@ RACKET_SCRIPT = $(SRCDIR)$(RUNME).rkt
 # Note: ISRCS, IOBJS not used.
 
 racket: $(SRCDIR_SRCS)
-	$(SWIG) -racket $(SWIGOPT) $(INTERFACEPATH)
 	$(CC) -c $(CCSHARED) $(CPPFLAGS) $(CFLAGS) $(SRCS) $(SRCDIR_SRCS) $(INCLUDES) $(JSINCLUDES)
 	$(LDSHARED) $(CFLAGS) $(LDFLAGS) $(OBJS) $(LIBS) -o $(LIBPREFIX)$(TARGET)$(SO)
+	$(SWIG) -racket $(SWIGOPT) $(INTERFACEPATH)
+
+racket_no_srcs:
+	$(SWIG) -racket $(SWIGOPT) $(INTERFACEPATH)
 
 # -----------------------------------------------------------------
 # Run mzscheme example
