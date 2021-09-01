@@ -1,5 +1,6 @@
 # Racket
 
+
 ## Obligations
 
 The interface module must insert into the "header" section a definition of
@@ -13,15 +14,20 @@ compatible with those produced by `define-ffi-definer`. For example:
       #:default-make-fail make-not-available)
     %}
 
+
 ## Translations
 
-### Defined constants
+### Type declarations
+
+The translations of type declarations are discussed in the "Types" section.
+
+### Constant definitions
 
 A `#define` constant is translated to an ordinary definition. Beware that if the
 right-hand side is not a simple numeric or string literal, the expression will
 not be well-formed.
 
-### Variables
+### Variable declarations
 
 A variable is translated to a procedure created using
 `make-c-parameter`. Calling the procedure with zero arguments retrieves the
@@ -30,7 +36,7 @@ variable's value.
 
 FIXME: options?
 
-### Functions
+### Function declarations
 
 A function is translated to a procedure defined using `define-foreign` and a
 `_fun` type. The formal parameters are translated to `_fun` argument clauses;
@@ -67,6 +73,7 @@ FIXME: output template
 - The `[result : $result-type]` is simplified to `$result-type` if the `->
   $result-expr` is omitted.
 - The `#:c-id` declaration is omitted if there is no renaming.
+
 
 ## Types
 
@@ -247,9 +254,9 @@ where `target-type` is the translation of the target type. Note, however, that
 
 
 
-# Misc
+## Misc
 
-## Out parameters
+### Out parameters
 
 For out (or inout) parameters, an idiomatic translation would use the `_ptr`
 function parameter syntax (which is not, strictly speaking, an FFI type), as
