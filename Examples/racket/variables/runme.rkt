@@ -36,6 +36,9 @@
 ;;(name    "Bill")
 (memmove (array-ptr (name)) #"Bill\0" 5)
 
+(check-equal? undef_var_f #f)
+(check-exn #rx"implementation not found"
+           (lambda () (undef_var_na)))
 
 ;; Now print out the values of the variables
 

@@ -54,10 +54,15 @@ extern char path[256];
 
 %mutable;
 
+%feature("var-options") undef_var_f "#:fail (lambda () #f)"
+extern int undef_var_f;
+
+%feature("var-options") undef_var_na "#:make-fail make-not-available";
+extern int undef_var_na;
+
 /* Some helper functions to make it easier to test */
 extern void  print_vars();
 extern int  *new_int(int value);
 extern Point *new_Point(int x, int y);
 extern char  *Point_print(Point *p);
 extern void  pt_print();
-
