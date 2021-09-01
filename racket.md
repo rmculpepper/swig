@@ -30,10 +30,12 @@ arithmetic expression), it emits a Racket expression that calls a fictitious
 
 ### Variable declarations
 
-A variable is translated to a procedure similar to those created by
+A variable is translated to a procedure similar to the result of
 `make-c-parameter`. Calling the procedure with zero arguments retrieves the
 variable's current value, and calling it with one argument updates the
-variable's value.
+variable's value. If the variable is declared immutable (for example, with the
+`%immutable` directive), calling the procedure to set the variable's value
+raises an error.
 
 A variable wrapper can also be customized by the `%rename` directive and the
 "var-options" feature, which can contain either `#:fail` or `#:make-fail`
@@ -41,10 +43,13 @@ keyword arguments, similar to those supported by the result of
 `define-ffi-definer`. For example:
 
     %feature("var-options") undef_var "#:fail (lambda () #f)"
+    // %feature("var-options") undef_var "#:make-fail make-not-available"
     int undef_var;
 
 If the foreign library does not contain `undef_var`, the Racket `undef_var`
-variable will get the value `#f` instead of a getter/setter procedure.
+variable will get the value `#f` instead of a getter/setter procedure. If the
+commented-out feature is used instead, then `undef_var` is bound to a procedure
+that always raises an error when applied.
 
 ### Function declarations
 
