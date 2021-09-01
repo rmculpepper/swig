@@ -88,6 +88,14 @@
 (module ffi-type-util racket/base
   (require ffi/unsafe)
   (define (_pointer-to type) _pointer) ;; Hint: maybe use (_ptr ? type) instead
+  (define (c-variable lib rktname name type
+                      #:immutable? [immutable? #f]
+                      #:make-fail [make-fail #f]
+                      #:fail [fail (and make-fail (make-fail rktname) #f)])
+    (void (ffi-obj-ref name lib fail)) ;; for error-check
+    (define p (make-c-parameter name lib type))
+    (define (cannot-set) (error rktname "variable ~s is immutable" name))
+    (case-lambda [() (p)] [(v) (if immutable? (cannot-set) (p v))]))
   (provide (protect-out (all-defined-out))))
 (require (submod "." ffi-type-util))
 %}

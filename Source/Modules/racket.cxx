@@ -57,10 +57,11 @@ public:
   virtual int typedefHandler(Node *n);
   List *entries;
 private:
+  void write_block(File *out, String *s, int indent, int subs, ...);
   String *adjust_block(String *tm, int indent);
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
-  void write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname);
+  void write_wrapper_options(File *f_out, String *opts, int indent, String *ffiname, String *cname);
   String *convert_literal(String *num_param, String *type);
   String *convert_integer_expr(char *s0);
   String *strip_parens(String *string);
@@ -186,15 +187,14 @@ int RACKET::functionWrapper(Node *n) {
     for (Iterator iter = First(argouts); iter.item; iter = Next(iter)) {
       Printf(f_wrappers, " %s", iter.item);
     }
-    Printf(f_wrappers, ")");
+    Printf(f_wrappers, "))");
   } else {
     Printf(f_wrappers, "-> %s)", restype);
   }
   if (Strcmp(func_name, cname)) {
     Printf(f_wrappers, "\n  #:c-id %s", cname);
   }
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:fun-options"), func_name, cname);
-  write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"), func_name, cname);
+  write_wrapper_options(f_wrappers, Getattr(n, "feature:fun-options"), 2, func_name, cname);
   Printf(f_wrappers, ")\n\n");
   Delete(restype);
 
@@ -210,20 +210,25 @@ void RACKET::write_function_prefix(File *out, String *prefix, int indent) {
   }
 }
 
-void RACKET::write_wrapper_options(File *f_out, String *opts, String *ffiname, String *cname) {
-  if (opts && Strcmp(opts, "")) {
-    // Each line of opts SHOULD be indented two spaces.
-    // The last non-whitespace line of opts MUST NOT end in a line comment.
-    opts = Copy(opts);
-    Chop(opts);
-    if (ffiname) Replaceall(opts, "$wrapname", ffiname);
-    if (cname) Replaceall(opts, "$name", cname);
-    if (Strncmp(opts, "\n", strlen("\n"))) {
-      Printf(f_out, "\n");
-    }
-    Printf(f_out, "%s", opts);
-    Delete(opts);
+void RACKET::write_wrapper_options(File *out, String *s, int indent, String *ffiname, String *cname) {
+  if (s && Strcmp(s, "")) {
+    writeIndent(out, indent, 0);
+    write_block(out, s, indent, 2, "$wrapname", ffiname, "$name", cname);
   }
+}
+
+void RACKET::write_block(File *out, String *s, int indent, int subs, ...) {
+  va_list args;
+  va_start(args, subs);
+  String *cp = adjust_block(s, indent);
+  while (subs--) {
+    const char *name = va_arg(args, const char*);
+    String *value = va_arg(args, String *);
+    Replaceall(cp, name, value);
+  }
+  va_end(args);
+  Printf(out, "%s", cp);
+  Delete(cp);
 }
 
 int RACKET::constantWrapper(Node *n) {
@@ -247,17 +252,23 @@ int RACKET::variableWrapper(Node *n) {
   String *cname = Getattr(n, "name");
   String *lisp_type = get_ffi_type(n, Getattr(n, "type"));
 
-  if (0) {
+  if (1) {
+    Printf(f_wrappers, "(define %s\n", var_name);
+    Printf(f_wrappers, "  (c-variable foreign-lib '%s '%s %s", var_name, cname, lisp_type);
+    int indent = strlen("  (c-variable ");
+    if (GetFlag(n, "feature:immutable")) {
+      writeIndent(f_wrappers, indent, 0);
+      Printf(f_wrappers, "#:immutable? #t");
+    }
+    write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"), indent, var_name, cname);
+    Printf(f_wrappers, "))\n\n");
+  } else {
     Printf(f_wrappers, "(define-foreign %s %s", var_name, lisp_type);
     if (Strcmp(var_name, cname)) {
       Printf(f_wrappers, "\n  #:c-id %s", cname);
     }
-    write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"), var_name, cname);
-    write_wrapper_options(f_wrappers, Getattr(n, "feature:wrap-options"), var_name, cname);
+    write_wrapper_options(f_wrappers, Getattr(n, "feature:var-options"), 2, var_name, cname);
     Printf(f_wrappers, ")\n\n");
-  } else {
-    Printf(f_wrappers, "(define %s (make-c-parameter \"%s\" foreign-lib %s))\n\n",
-           var_name, cname, lisp_type);
   }
 
   Append(entries, var_name);
@@ -413,7 +424,7 @@ int RACKET::classDeclaration(Node *n) {
       }
     }
     Printf(f_wrappers, ")");
-    write_wrapper_options(f_wrappers, Getattr(n, "feature:struct-options"),
+    write_wrapper_options(f_wrappers, Getattr(n, "feature:struct-options"), 2,
                           tyname, Getattr(n, "name"));
     Printf(f_wrappers, ")\n\n");
 
@@ -464,12 +475,10 @@ void RACKET::write_function_params(File *out, Node *n, ParmList *pl, int indent,
 String *RACKET::adjust_block(String *tmin, int indent) {
   char *s = Char(tmin);
   int len = Len(tmin);
-  // if ((s[0] == '{') && (s[len - 1] == '}')) { s++; len = len - 2; }
   while (isspace(s[0]) || (s[0] == '\n')) { s++; len--; } // FIXME: is isspace('\n') true?
   while (isspace(s[len - 1]) || (s[len - 1] == '\n')) { len--; }
   String *tm = NewString("");
   Write(tm, s, len);
-  // Chop(tm);
   if (indent >= 0) {
     String *indentation = NewString("\n");
     indent = indent - 2; // expected starting indentation
