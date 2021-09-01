@@ -1,7 +1,7 @@
 /* File : example.i */
 %module example
 
-%header %{
+%insert("rktheader") %{
 (define foreign-lib (ffi-lib "example.so"))
 (define-ffi-definer define-foreign foreign-lib)
 %}

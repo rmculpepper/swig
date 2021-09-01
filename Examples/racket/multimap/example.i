@@ -1,7 +1,7 @@
 /* File : example.i */
 %module example
 
-%{
+%insert("rktheader") %{
 (define foreign-lib (ffi-lib "example.so"))
 (define-ffi-definer define-foreign foreign-lib
   #:default-make-fail make-not-available)
@@ -9,21 +9,21 @@
 (define _char (make-ctype _byte char->integer integer->char))
 %}
 
-%typemap(ffi) char "_char";
+%typemap(rktffi) char "_char";
 
 // %include exception.i
 // %include typemaps.i
 
 extern int    gcd(int x, int y);
 
-%typemap(in) (int argc, char *argv[]) %{
+%typemap(rktin) (int argc, char *argv[]) %{
   [$1_name : _int = (length $2_name)]
   [$2_name : (_list i _string)]
 %}
 
 extern int gcdmain(int argc, char *argv[]);
 
-%typemap(in) (char *bytes, int len) %{
+%typemap(rktin) (char *bytes, int len) %{
   [$1_name : _string/utf-8]
   [$2_name : _int = (string-utf-8-length $1_name)]
 %}
@@ -36,7 +36,7 @@ extern int charcount(char *bytes, int len, char c);
 // change the length!  Use bytestring instead.
 
 %feature("fun-prefix") capitalize "(rktstr) ::";
-%typemap(in) (char *str, int len) %{
+%typemap(rktin) (char *str, int len) %{
   [$1_name : _bytes = (string->bytes/utf-8 rktstr)]
   [$2_name : _int = (bytes-length $1_name)]
 %}

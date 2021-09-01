@@ -1,7 +1,7 @@
 // Tests SWIG's handling of pass-by-value for complex datatypes
 %module example
 
-%{
+%insert("rktheader") %{
 (require (only-in racket/struct make-constructor-style-printer))
 (define foreign-lib (ffi-lib "example.so"))
 (define-ffi-definer define-foreign foreign-lib)
