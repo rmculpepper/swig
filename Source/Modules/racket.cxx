@@ -63,7 +63,7 @@ private:
   String *get_mapped_type(Node *n, SwigType *ty);
   void write_wrapper_options(File *f_out, String *opts, int indent, String *ffiname, String *cname);
   String *convert_literal(String *num_param, String *type);
-  String *convert_integer_expr(char *s0);
+  String *convert_numeric_expr(char *s0);
   String *strip_parens(String *string);
   void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
   void write_function_prefix(File *out, String *prefix, int indent);
@@ -551,62 +551,82 @@ String *RACKET::convert_literal(String *num_param, String *type) {
   String *num = strip_parens(num_param), *res;
   char *s = Char(num);
 
-  if (!Strcmp(type, "double")) {
-    return num;
-  }
-
   if (SwigType_type(type) == T_CHAR) {
-    /* Use Racket syntax for character literals */
-    res = NewStringf("#\\%s", num_param);
+    // Use Racket syntax for character literals
+    if ((Len(num) == 1) && (isgraph(s[0]))) {
+      res = NewStringf("(char->integer #\\%s)", num);
+    } else if (!Strcmp(num, " ")) {
+      res = NewString("(char->integer #\\space)");
+    } else if (!Strcmp(num, "\\n")) {
+      res = NewString("(char->integer #\\newline)");
+    } else if (!Strcmp(num, "\\r")) {
+      res = NewString("(char->integer #\\return)");
+    } else if (!Strcmp(num, "\\t")) {
+      res = NewString("(char->integer #\\tab)");
+    } else {
+      res = NewStringf("(bytes-ref #\"%s\" 0)", num);
+    }
   } else if (SwigType_type(type) == T_STRING) {
-    /* Use Racket syntax for string literals */
+    // Use Racket syntax for string literals
     // FIXME: needs escaping!
     res = NewStringf("\"%s\"", num_param);
   } else {
-    res = convert_integer_expr(s);
+    res = convert_numeric_expr(s);
   }
   Delete(num);
+  // Printf(stderr, "constant = '%s', type = %s\n", num_param, type);
+  // Printf(stderr, "  -> '%s'\n", res);
   return res;
 }
 
-String *RACKET::convert_integer_expr(char *s0) {
+String *RACKET::convert_numeric_expr(char *s0) {
   String *out = NewString("");
   char *s = s0;
   char *end = s + strlen(s);
-  intptr_t value = 0;
-  char sbuf[10];
   int read = 0;
   char op = 0;
+
+  intptr_t ivalue;
+  double dvalue;
+  char svalue[10];
 
  READ_NUM:
   sscanf(s, " %n", &read);
   s = s + read; read = 0;
-  if (sscanf(s, "%ji%n", &value, &read) == 1) {
-    if (read == 1 || s[0] != '0') {
-      // decimal
-      Write(out, s, read);
-    } else if (s[1] == 'x' || s[1] == 'X') {
-      // hexadecimal
-      Printf(out, "#x");
-      Write(out, s + 2, read - 2);
-    } else {
-      // octal
-      Printf(out, "#o");
-      Write(out, s + 1, read - 1);
-    }
-    Printf(out, " ");
+  if ((sscanf(s, "%ji%n", &ivalue, &read) == 1) && (s[read] !='.')) {
+    goto GOT_INTEGER;
+  } else if (sscanf(s, "%lf%n", &dvalue, &read) == 1) {
+    // Printf(out, "%lf ", dvalue);
+    Write(out, s, read); Printf(out, " ");
     s = s + read;
     goto READ_OP;
   } else {
     goto ERROR;
   }
 
+ GOT_INTEGER:
+  if (read == 1 || s[0] != '0') {
+    // decimal
+    Write(out, s, read);
+  } else if (s[1] == 'x' || s[1] == 'X') {
+    // hexadecimal
+    Printf(out, "#x");
+    Write(out, s + 2, read - 2);
+  } else {
+    // octal
+    Printf(out, "#o");
+    Write(out, s + 1, read - 1);
+  }
+  Printf(out, " ");
+  s = s + read;
+  goto READ_OP;
+
  READ_OP:
   sscanf(s, " %n", &read);
   s = s + read; read = 0;
   if (s == end) {
     goto SUCCESS;
-  } else if (sscanf(s, "%1[|]%n", &sbuf[0], &read)) {
+  } else if (sscanf(s, "%1[|]%n", &svalue[0], &read)) {
     if (!op || op == '|') {
       op = '|';
       s = s + read;
@@ -614,7 +634,7 @@ String *RACKET::convert_integer_expr(char *s0) {
     } else {
       goto ERROR;
     }
-  } else if (sscanf(s, "%1[+]%n", &sbuf[0], &read)) {
+  } else if (sscanf(s, "%1[+]%n", &svalue[0], &read)) {
     if (!op || op == '+') {
       op = '+';
       s = s + read;
