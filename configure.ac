@@ -437,6 +437,11 @@ case $host in
    *) MZSCHEME_SO=.so;;
 esac
 
+AC_SUBST(RACKET_SO)
+case $host in
+   *) RACKET_SO=.so;;
+esac
+
 AC_SUBST(LUA_SO)
 case $host in
    *-*-darwin*) LUA_SO=.so;;
@@ -1948,7 +1953,6 @@ else
   else
      RACKET="$RACKETBIN"
   fi
-
 fi
 
 #----------------------------------------------------------------
@@ -2693,6 +2697,12 @@ if test -z "$MZC" || test -z "$MZDYNOBJ" ; then
     SKIP_MZSCHEME="1"
 fi
 AC_SUBST(SKIP_MZSCHEME)
+
+SKIP_RACKET=
+if test -z "$RACKET" ; then
+    SKIP_RACKET="1"
+fi
+AC_SUBST(SKIP_RACKET)
 
 
 SKIP_RUBY=

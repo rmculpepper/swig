@@ -229,6 +229,7 @@ check-test-suite:				\
 	check-java-test-suite			\
 	check-guile-test-suite			\
 	check-mzscheme-test-suite		\
+	check-racket-test-suite			\
 	check-ruby-test-suite			\
 	check-ocaml-test-suite			\
 	check-octave-test-suite			\
@@ -276,6 +277,7 @@ all-test-suite:					\
 	all-java-test-suite			\
 	all-guile-test-suite			\
 	all-mzscheme-test-suite			\
+	all-racket-test-suite			\
 	all-ruby-test-suite			\
 	all-ocaml-test-suite			\
 	all-octave-test-suite			\
@@ -299,6 +301,7 @@ broken-test-suite:				\
 	broken-java-test-suite			\
 	broken-guile-test-suite			\
 	broken-mzscheme-test-suite		\
+	broken-racket-test-suite		\
 	broken-ruby-test-suite			\
 	broken-ocaml-test-suite			\
 	broken-octave-test-suite		\

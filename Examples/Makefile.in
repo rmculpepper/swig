@@ -890,7 +890,7 @@ racket_no_srcs:
 	$(SWIG) -racket $(SWIGOPT) $(INTERFACEPATH)
 
 # -----------------------------------------------------------------
-# Run mzscheme example
+# Run racket example
 # -----------------------------------------------------------------
 
 racket_run:
@@ -904,7 +904,7 @@ racket_version:
 	$(RACKET) -v
 
 # -----------------------------------------------------------------
-# Cleaning the mzscheme examples
+# Cleaning the racket examples
 # -----------------------------------------------------------------
 
 racket_clean:
