@@ -40,6 +40,7 @@ Racket Options (available with -racket)\n\
 class RACKET:public Language {
 public:
   int emit_c_file;
+  int emit_define_foreign;
   File *f_cw;
   File *f_cbegin;
   File *f_cruntime;
@@ -94,6 +95,7 @@ void RACKET::main(int argc, char *argv[]) {
   SWIG_config_file("racket.swg");
   extern_all_flag = 0;
   emit_c_file = 0;
+  emit_define_foreign = 0;
   known_types = NewHash();
   used_structs = NewHash();
   defined_structs = NewHash();
@@ -107,12 +109,15 @@ void RACKET::main(int argc, char *argv[]) {
     } else if ((Strcmp(argv[i], "-emit-c-file") == 0)) {
       emit_c_file = 1;
       Swig_mark_arg(i);
+    } else if ((Strcmp(argv[i], "-emit-define-foreign") == 0)) {
+      emit_define_foreign = 1;
+      Swig_mark_arg(i);
     }
   }
 }
 
 void RACKET::add_known_type(String *type, const char *kind) {
-  Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
+  // Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
   Setattr(known_types, type, kind);
 }
 
@@ -175,6 +180,12 @@ int RACKET::top(Node *n) {
   }
 
   Language::top(n);
+
+  if (emit_define_foreign) {
+    Printf(f_rkthead, "(define foreign-lib (ffi-lib \"%s.so\"))\n", module);
+    Printf(f_rkthead, "(define-ffi-definer define-foreign foreign-lib)\n\n");
+  }
+
   emit_forward_structs();
 
   if (1) {
