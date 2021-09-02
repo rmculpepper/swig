@@ -3,7 +3,7 @@
 #######################################################################
 
 LANGUAGE     = racket
-MZSCHEME     = racket
+RACKET       = racket
 SCRIPTSUFFIX = _runme.rkt
 
 srcdir       = @srcdir@
@@ -73,26 +73,26 @@ multi_import \
 include $(srcdir)/../common.mk
 
 # Overridden variables here
-SWIGOPT += -w524 -emit-c-file # Suppress SWIGWARN_LANG_EXPERIMENTAL warning
+SWIGOPT += -w524 -emit-c-file -emit-define-foreign # Suppress SWIGWARN_LANG_EXPERIMENTAL warning
 
 # Custom tests - tests with additional commandline options
 # none!
 
 # Rules for the different types of tests
-%.cpptest:
-	$(setup)
-	+$(swig_and_compile_cpp)
-	$(run_testcase)
-
 %.ctest:
 	$(setup)
 	+$(swig_and_compile_c)
 	$(run_testcase)
 
+%.cpptest:
+	#$(setup)
+	#+$(swig_and_compile_cpp)
+	#$(run_testcase)
+
 %.multicpptest:
-	$(setup)
-	+$(swig_and_compile_multi_cpp)
-	$(run_testcase)
+	#$(setup)
+	#+$(swig_and_compile_multi_cpp)
+	#$(run_testcase)
 
 # Runs the testcase. A testcase is only run if
 # a file is found which has _runme.rkt appended after the testcase name.

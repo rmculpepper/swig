@@ -2862,6 +2862,7 @@ AC_CONFIG_FILES([
     Examples/test-suite/java/Makefile
     Examples/test-suite/javascript/Makefile
     Examples/test-suite/mzscheme/Makefile
+    Examples/test-suite/racket/Makefile
     Examples/test-suite/ocaml/Makefile
     Examples/test-suite/octave/Makefile
     Examples/test-suite/perl5/Makefile
