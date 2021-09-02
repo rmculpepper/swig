@@ -6,6 +6,11 @@
    to distinguish between the SWIG language modules. */ 
 
 #define SWIG_RACKET
+%insert("header") %{
+#include <string.h>
+#include <stdlib.h>
+%}
+
 
 /* Integer types */
 

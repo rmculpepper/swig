@@ -470,11 +470,22 @@ int RACKET::classDeclaration(Node *n) {
           Append(entries, NewStringf("%s-%s", name, slot_name));
           Delete(lisp_type);
         }
+      } else if (!Strcmp(nodeType(c), "enum")) {
+        // FIXME: process children of node
+        continue;
+      } else if (!Strcmp(nodeType(c), "constant")) {
+        // FIXME: process children of node
+        continue;
+      } else if (!Strcmp(nodeType(c), "insert")) {
+        // FIXME: process children of node
+        continue;
       } else if (!Strcmp(nodeType(c), "include")) {
         // FIXME: process children of node
         continue;
-      }
-      else {
+      } else if (!Strcmp(nodeType(c), "extend")) {
+        // FIXME: process children of node
+        continue;
+      } else {
         Printf(stderr, "Structure %s has a slot that we can't deal with.\n", name);
         Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
                nodeType(c), Getattr(c, "name"), Getattr(c, "type"));
@@ -554,27 +565,34 @@ String *RACKET::stringOfUnion(Node *n, int indent) {
   int first = 1;
 
   for (Node *c = firstChild(n); c; c = nextSibling(c)) {
-    if (Strcmp(nodeType(c), "cdecl")) {
-      Printf(stderr, "Structure %s has a slot that we can't deal with.\n", Getattr(n, "name"));
+    if (!Strcmp(nodeType(c), "cdecl")) {
+      String *temp = Copy(Getattr(c, "decl"));
+      if (temp) {
+        Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
+        String *lisp_type = get_ffi_type(n, temp);
+        Delete(temp);
+
+        // String *slot_name = Getattr(c, "sym:name");
+        if (!first) { writeIndent(out, indent, strlen("(_union ") + 2); } else { first = 0; }
+        Printf(out, "%s", lisp_type);
+
+        Delete(lisp_type);
+      }
+    } else if (!Strcmp(nodeType(c), "constant")) {
+      continue;
+    } else if (!Strcmp(nodeType(c), "extend")) {
+      continue;
+    } else if (!Strcmp(nodeType(c), "insert")) {
+      continue;
+    } else if (!Strcmp(nodeType(c), "include")) {
+      continue;
+    } else {
+      Printf(stderr, "Union %s has a slot that we can't deal with.\n", Getattr(n, "name"));
       Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
              nodeType(c), Getattr(c, "name"), Getattr(c, "type"));
       SWIG_exit(EXIT_FAILURE);
     }
-
-    String *temp = Copy(Getattr(c, "decl"));
-    if (temp) {
-      Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
-      String *lisp_type = get_ffi_type(n, temp);
-      Delete(temp);
-
-      // String *slot_name = Getattr(c, "sym:name");
-      if (!first) { writeIndent(out, indent, strlen("(_union ") + 2); } else { first = 0; }
-      Printf(out, "%s", lisp_type);
-
-      Delete(lisp_type);
-    }
   }
-
   Printf(out, ")");
 
   return out;
