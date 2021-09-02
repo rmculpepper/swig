@@ -84,10 +84,14 @@ feature. The following is the general template of a function wrapper:
       #:c-id $cname
       $fun-options)
 
-- The `-> $result-expr` is omitted if it is not overridden by the "fun-result"
-  feature or "argout" typemap.
-- The `[result : $result-type]` is simplified to `$result-type` if the `->
-  $result-expr` is omitted.
+- The `$result-expr` is determined as follows:
+  - If there is a "fun-result" declaration, its value is used.
+  - Otherwise, if there are any "rktargout" mappings, then `$result-expr` is
+    `(values result $argout-expr ...)`, where each `$argout-expr` comes from a
+    "rktargout" mapping, in the order that the arguments appear.
+  - Otherwise, there is no `$result-expr`. In that case, the `-> $result-expr`
+    line is omitted, and the `[result : $result-type]` line is simplified to
+    just `$result-type`.
 - The `#:c-id` declaration is omitted if there is no renaming.
 
 
