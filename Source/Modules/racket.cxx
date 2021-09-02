@@ -455,26 +455,30 @@ int RACKET::classDeclaration(Node *n) {
     int first = 1;
 
     for (Node *c = firstChild(n); c; c = nextSibling(c)) {
-      if (Strcmp(nodeType(c), "cdecl")) {
+      if (!Strcmp(nodeType(c), "cdecl")) {
+        String *temp = Copy(Getattr(c, "decl"));
+        if (temp) {
+          Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
+          String *lisp_type = get_ffi_type(n, temp);
+          Delete(temp);
+
+          String *slot_name = Getattr(c, "sym:name");
+
+          if (!first) { writeIndent(f_rktwrap, 3, 0); } else { first = 0; }
+          Printf(f_rktwrap, "[%s %s]", slot_name, lisp_type);
+
+          Append(entries, NewStringf("%s-%s", name, slot_name));
+          Delete(lisp_type);
+        }
+      } else if (!Strcmp(nodeType(c), "include")) {
+        // FIXME: process children of node
+        continue;
+      }
+      else {
         Printf(stderr, "Structure %s has a slot that we can't deal with.\n", name);
         Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
                nodeType(c), Getattr(c, "name"), Getattr(c, "type"));
         SWIG_exit(EXIT_FAILURE);
-      }
-
-      String *temp = Copy(Getattr(c, "decl"));
-      if (temp) {
-        Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
-        String *lisp_type = get_ffi_type(n, temp);
-        Delete(temp);
-
-        String *slot_name = Getattr(c, "sym:name");
-
-        if (!first) { Printf(f_rktwrap, "\n   "); } else { first = 0; }
-        Printf(f_rktwrap, "[%s %s]", slot_name, lisp_type);
-
-        Append(entries, NewStringf("%s-%s", name, slot_name));
-        Delete(lisp_type);
       }
     }
     Printf(f_rktwrap, ")");
