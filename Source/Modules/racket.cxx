@@ -37,6 +37,11 @@ Racket Options (available with -racket)\n\
      -emit-c-file      - Emit a C wrapper file.\n\
 ";
 
+struct member_ctx {
+  List *members;
+  struct member_ctx *prev;
+};
+
 class RACKET:public Language {
 public:
   int emit_c_file;
@@ -64,6 +69,9 @@ public:
   virtual int classforwardDeclaration(Node *n);
   virtual int enumDeclaration(Node *n);
   virtual int typedefHandler(Node *n);
+  virtual int membervariableHandler(Node *);
+  virtual int memberconstantHandler(Node *);
+  virtual int memberfunctionHandler(Node *);
   List *entries;
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
@@ -77,6 +85,7 @@ private:
   Hash *known_types;
   Hash *used_structs;
   Hash *defined_structs;
+  struct member_ctx *mctx;
 };
 
 static void write_block(File *out, String *s, int indent, int subs, ...);
@@ -101,6 +110,7 @@ void RACKET::main(int argc, char *argv[]) {
   known_types = NewHash();
   used_structs = NewHash();
   defined_structs = NewHash();
+  mctx = NULL;
 
   for (i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-help")) {
@@ -416,6 +426,15 @@ int RACKET::classDeclaration(Node *n) {
   String *name = Getattr(n, "sym:name");
   String *tyname = NewStringf("_%s", name);
   String *kind = Getattr(n, "kind");
+  int result;
+
+  struct member_ctx my_mctx = { NewList(), mctx };
+  mctx = &my_mctx;
+
+  result = Language::classDeclaration(n);
+  mctx = my_mctx.prev;
+
+  if (result != SWIG_OK) return result;
 
   if (!Strcmp(kind, "struct")) {
     Append(entries, NewStringf("make-%s", name));
@@ -426,7 +445,8 @@ int RACKET::classDeclaration(Node *n) {
 
     int first = 1;
 
-    for (Node *c = firstChild(n); c; c = nextSibling(c)) {
+    for (Iterator iter = First(my_mctx.members); iter.item; iter = Next(iter)) {
+      Node *c = iter.item;
       if (!Strcmp(nodeType(c), "cdecl")) {
         String *temp = Copy(Getattr(c, "decl"));
         if (temp) {
@@ -442,21 +462,6 @@ int RACKET::classDeclaration(Node *n) {
           Append(entries, NewStringf("%s-%s", name, slot_name));
           Delete(lisp_type);
         }
-      } else if (!Strcmp(nodeType(c), "enum")) {
-        // FIXME: process children of node
-        continue;
-      } else if (!Strcmp(nodeType(c), "constant")) {
-        // FIXME: process children of node
-        continue;
-      } else if (!Strcmp(nodeType(c), "insert")) {
-        // FIXME: process children of node
-        continue;
-      } else if (!Strcmp(nodeType(c), "include")) {
-        // FIXME: process children of node
-        continue;
-      } else if (!Strcmp(nodeType(c), "extend")) {
-        // FIXME: process children of node
-        continue;
       } else {
         Printf(stderr, "Structure %s has a slot that we can't deal with.\n", name);
         Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
@@ -473,9 +478,34 @@ int RACKET::classDeclaration(Node *n) {
     return SWIG_OK;
   }
   else if (!Strcmp(kind, "union")) {
-    String *expr = stringOfUnion(n, 2);
     Printf(f_rktwrap, "(define %s\n", tyname);
-    Printf(f_rktwrap, "  %s)\n\n", expr);
+    Printf(f_rktwrap, "  (_union ");
+
+    int first = 1;
+
+    for (Iterator iter = First(my_mctx.members); iter.item; iter = Next(iter)) {
+      Node *c = iter.item;
+      int indent = strlen("  (_union ");
+      if (!Strcmp(nodeType(c), "cdecl")) {
+        String *temp = Copy(Getattr(c, "decl"));
+        if (temp) {
+          Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
+          String *lisp_type = get_ffi_type(n, temp);
+          Delete(temp);
+
+          if (!first) { writeIndent(f_rktwrap, indent, 0); } else { first = 0; }
+          Printf(f_rktwrap, "%s", lisp_type);
+
+          Delete(lisp_type);
+        }
+      } else {
+        Printf(stderr, "Union %s has a slot that we can't deal with.\n", Getattr(n, "name"));
+        Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
+               nodeType(c), Getattr(c, "name"), Getattr(c, "type"));
+        SWIG_exit(EXIT_FAILURE);
+      }
+    }
+    Printf(f_rktwrap, "))\n\n");
 
     add_known_type(tyname, "union");
     return SWIG_OK;
@@ -487,6 +517,23 @@ int RACKET::classDeclaration(Node *n) {
     return 0; // unreachable (FIXME?)
   }
 }
+
+int RACKET::membervariableHandler(Node *n) {
+  if (mctx) {
+    Append(mctx->members, n);
+  }
+  return Language::membervariableHandler(n);
+}
+
+int RACKET::memberconstantHandler(Node *n) {
+  return Language::memberconstantHandler(n);
+}
+
+int RACKET::memberfunctionHandler(Node *n) {
+  return Language::memberfunctionHandler(n);
+}
+
+// ----------------------------------------
 
 void RACKET::write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts) {
   Parm *p = pl;
@@ -511,47 +558,6 @@ void RACKET::write_function_params(File *out, Node *n, ParmList *pl, int indent,
     }
     writeIndent(out, indent, 0);
   }
-}
-
-String *RACKET::stringOfUnion(Node *n, int indent) {
-  String *out = NewString("");
-
-  Printf(out, "(_union ");
-
-  int first = 1;
-
-  for (Node *c = firstChild(n); c; c = nextSibling(c)) {
-    if (!Strcmp(nodeType(c), "cdecl")) {
-      String *temp = Copy(Getattr(c, "decl"));
-      if (temp) {
-        Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
-        String *lisp_type = get_ffi_type(n, temp);
-        Delete(temp);
-
-        // String *slot_name = Getattr(c, "sym:name");
-        if (!first) { writeIndent(out, indent, strlen("(_union ") + 2); } else { first = 0; }
-        Printf(out, "%s", lisp_type);
-
-        Delete(lisp_type);
-      }
-    } else if (!Strcmp(nodeType(c), "constant")) {
-      continue;
-    } else if (!Strcmp(nodeType(c), "extend")) {
-      continue;
-    } else if (!Strcmp(nodeType(c), "insert")) {
-      continue;
-    } else if (!Strcmp(nodeType(c), "include")) {
-      continue;
-    } else {
-      Printf(stderr, "Union %s has a slot that we can't deal with.\n", Getattr(n, "name"));
-      Printf(stderr, "nodeType: %s, name: %s, type: %s\n",
-             nodeType(c), Getattr(c, "name"), Getattr(c, "type"));
-      SWIG_exit(EXIT_FAILURE);
-    }
-  }
-  Printf(out, ")");
-
-  return out;
 }
 
 String *RACKET::get_mapped_type(Node *n, SwigType *ty) {
