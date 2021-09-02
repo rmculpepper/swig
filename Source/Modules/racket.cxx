@@ -66,26 +66,28 @@ public:
   virtual int typedefHandler(Node *n);
   List *entries;
 private:
-  void write_block(File *out, String *s, int indent, int subs, ...);
-  String *adjust_block(String *tm, int indent);
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
-  void write_wrapper_options(File *f_out, String *opts, int indent, String *ffiname, String *cname);
-  String *convert_literal(String *num_param, String *type);
-  String *convert_numeric_expr(char *s0);
-  String *strip_parens(String *string);
-  void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
-  void write_function_prefix(File *out, String *prefix, int indent);
-  String *stringOfUnion(Node *n, int indent);
-  void writeIndent(String *out, int indent, int moreindent);
   void add_known_type(String *ty, const char *kind);
   int is_known_struct_type(String *ty);
   void emit_forward_structs();
+  void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
+  String *stringOfUnion(Node *n, int indent);
   int extern_all_flag;
   Hash *known_types;
   Hash *used_structs;
   Hash *defined_structs;
 };
+
+static void write_block(File *out, String *s, int indent, int subs, ...);
+static String *adjust_block(String *tm, int indent);
+static void write_wrapper_options(File *out, String *opts, int indent, String *ffiname, String *cname);
+static String *convert_literal(String *num_param, String *type);
+static String *convert_numeric_expr(char *s0);
+static String *strip_parens(String *string);
+
+static void write_function_prefix(File *out, String *prefix, int indent);
+static void writeIndent(String *out, int indent, int moreindent);
 
 void RACKET::main(int argc, char *argv[]) {
   int i;
@@ -253,36 +255,6 @@ int RACKET::functionWrapper(Node *n) {
   Delete(restype);
 
   return SWIG_OK;
-}
-
-void RACKET::write_function_prefix(File *out, String *prefix, int indent) {
-  if (prefix && Strcmp(prefix, "")) {
-    String *adjprefix = adjust_block(prefix, indent);
-    Printf(out, "%s", adjprefix);
-    writeIndent(out, indent, 0);
-    Delete(adjprefix);
-  }
-}
-
-void RACKET::write_wrapper_options(File *out, String *s, int indent, String *ffiname, String *cname) {
-  if (s && Strcmp(s, "")) {
-    writeIndent(out, indent, 0);
-    write_block(out, s, indent, 2, "$wrapname", ffiname, "$name", cname);
-  }
-}
-
-void RACKET::write_block(File *out, String *s, int indent, int subs, ...) {
-  va_list args;
-  va_start(args, subs);
-  String *cp = adjust_block(s, indent);
-  while (subs--) {
-    const char *name = va_arg(args, const char*);
-    String *value = va_arg(args, String *);
-    Replaceall(cp, name, value);
-  }
-  va_end(args);
-  Printf(out, "%s", cp);
-  Delete(cp);
 }
 
 int RACKET::constantWrapper(Node *n) {
@@ -541,22 +513,6 @@ void RACKET::write_function_params(File *out, Node *n, ParmList *pl, int indent,
   }
 }
 
-String *RACKET::adjust_block(String *tmin, int indent) {
-  char *s = Char(tmin);
-  int len = Len(tmin);
-  while (isspace(s[0]) || (s[0] == '\n')) { s++; len--; } // FIXME: is isspace('\n') true?
-  while (isspace(s[len - 1]) || (s[len - 1] == '\n')) { len--; }
-  String *tm = NewString("");
-  Write(tm, s, len);
-  if (indent >= 0) {
-    String *indentation = NewString("\n");
-    indent = indent - 2; // expected starting indentation
-    while (indent--) { Printf(indentation, " "); }
-    Replaceall(tm, "\n", indentation);
-  }
-  return tm;
-}
-
 String *RACKET::stringOfUnion(Node *n, int indent) {
   String *out = NewString("");
 
@@ -598,151 +554,6 @@ String *RACKET::stringOfUnion(Node *n, int indent) {
   return out;
 }
 
-void RACKET::writeIndent(String *out, int indent, int moreindent) {
-  if (indent >= 0) {
-    Printf(out, "\n");
-    for (int i = 0; i < indent + moreindent; ++i) {
-      Printf(out, " ");
-    }
-  } else {
-    Printf(out, " ");
-  }
-}
-
-/* utilities */
-/* returns new string w/ parens stripped */
-String *RACKET::strip_parens(String *string) {
-  char *s = Char(string);
-  int len = Len(string);
-  if (len == 0 || s[0] != '(' || s[len - 1] != ')') {
-    return NewString(string);
-  } else {
-    String *res = NewString("");
-    Write(res, s + 1, len - 2);
-    return res;
-  }
-}
-
-String *RACKET::convert_literal(String *num_param, String *type) {
-  String *num = strip_parens(num_param), *res;
-  char *s = Char(num);
-
-  if (SwigType_type(type) == T_CHAR) {
-    // Use Racket syntax for character literals
-    if ((Len(num) == 1) && (isgraph(s[0]))) {
-      res = NewStringf("(char->integer #\\%s)", num);
-    } else if (!Strcmp(num, " ")) {
-      res = NewString("(char->integer #\\space)");
-    } else if (!Strcmp(num, "\\n")) {
-      res = NewString("(char->integer #\\newline)");
-    } else if (!Strcmp(num, "\\r")) {
-      res = NewString("(char->integer #\\return)");
-    } else if (!Strcmp(num, "\\t")) {
-      res = NewString("(char->integer #\\tab)");
-    } else {
-      res = NewStringf("(bytes-ref #\"%s\" 0)", num);
-    }
-  } else if (SwigType_type(type) == T_STRING) {
-    // Use Racket syntax for string literals
-    // FIXME: needs escaping!
-    res = NewStringf("\"%s\"", num_param);
-  } else {
-    res = convert_numeric_expr(s);
-  }
-  Delete(num);
-  // Printf(stderr, "constant = '%s', type = %s\n", num_param, type);
-  // Printf(stderr, "  -> '%s'\n", res);
-  return res;
-}
-
-String *RACKET::convert_numeric_expr(char *s0) {
-  String *out = NewString("");
-  char *s = s0;
-  char *end = s + strlen(s);
-  int read = 0;
-  char op = 0;
-
-  intptr_t ivalue;
-  double dvalue;
-  char svalue[10];
-
- READ_NUM:
-  sscanf(s, " %n", &read);
-  s = s + read; read = 0;
-  if ((sscanf(s, "%ji%n", &ivalue, &read) == 1) && (s[read] !='.')) {
-    goto GOT_INTEGER;
-  } else if (sscanf(s, "%lf%n", &dvalue, &read) == 1) {
-    // Printf(out, "%lf ", dvalue);
-    Write(out, s, read); Printf(out, " ");
-    s = s + read;
-    goto READ_OP;
-  } else {
-    goto ERROR;
-  }
-
- GOT_INTEGER:
-  if (read == 1 || s[0] != '0') {
-    // decimal
-    Write(out, s, read);
-  } else if (s[1] == 'x' || s[1] == 'X') {
-    // hexadecimal
-    Printf(out, "#x");
-    Write(out, s + 2, read - 2);
-  } else {
-    // octal
-    Printf(out, "#o");
-    Write(out, s + 1, read - 1);
-  }
-  Printf(out, " ");
-  s = s + read;
-  goto READ_OP;
-
- READ_OP:
-  sscanf(s, " %n", &read);
-  s = s + read; read = 0;
-  if (s == end) {
-    goto SUCCESS;
-  } else if (sscanf(s, "%1[|]%n", &svalue[0], &read)) {
-    if (!op || op == '|') {
-      op = '|';
-      s = s + read;
-      goto READ_NUM;
-    } else {
-      goto ERROR;
-    }
-  } else if (sscanf(s, "%1[+]%n", &svalue[0], &read)) {
-    if (!op || op == '+') {
-      op = '+';
-      s = s + read;
-      goto READ_NUM;
-    } else {
-      goto ERROR;
-    }
-  } else {
-    goto ERROR;
-  }
-
- ERROR:
-  Delete(out);
-  return NewStringf("(FIXME #| %s |#)", s0);
-
- SUCCESS:
-  Chop(out);
-  if (op == 0) {
-    return out;
-  } else if (op == '|') {
-    String *result = NewStringf("(bitwise-ior %s)", out);
-    Delete(out);
-    return result;
-  } else if (op == '+') {
-    String *result = NewStringf("(+ %s)", out);
-    Delete(out);
-    return result;
-  } else {
-    goto ERROR;
-  }
-}
-
 String *RACKET::get_mapped_type(Node *n, SwigType *ty) {
   Node *node = NewHash();
   Setattr(node, "type", ty);
@@ -752,7 +563,6 @@ String *RACKET::get_mapped_type(Node *n, SwigType *ty) {
   Delete(node);
   return tm ? NewString(tm) : NULL;
 }
-
 
 String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
   String *result;
@@ -848,6 +658,198 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
   return result;
 }
 
+// ============================================================
+
+void write_function_prefix(File *out, String *prefix, int indent) {
+  if (prefix && Strcmp(prefix, "")) {
+    String *adjprefix = adjust_block(prefix, indent);
+    Printf(out, "%s", adjprefix);
+    writeIndent(out, indent, 0);
+    Delete(adjprefix);
+  }
+}
+
+void write_wrapper_options(File *out, String *s, int indent, String *ffiname, String *cname) {
+  if (s && Strcmp(s, "")) {
+    writeIndent(out, indent, 0);
+    write_block(out, s, indent, 2, "$wrapname", ffiname, "$name", cname);
+  }
+}
+
+void write_block(File *out, String *s, int indent, int subs, ...) {
+  va_list args;
+  va_start(args, subs);
+  String *cp = adjust_block(s, indent);
+  while (subs--) {
+    const char *name = va_arg(args, const char*);
+    String *value = va_arg(args, String *);
+    Replaceall(cp, name, value);
+  }
+  va_end(args);
+  Printf(out, "%s", cp);
+  Delete(cp);
+}
+
+String *adjust_block(String *tmin, int indent) {
+  char *s = Char(tmin);
+  int len = Len(tmin);
+  while (isspace(s[0]) || (s[0] == '\n')) { s++; len--; } // FIXME: is isspace('\n') true?
+  while (isspace(s[len - 1]) || (s[len - 1] == '\n')) { len--; }
+  String *tm = NewString("");
+  Write(tm, s, len);
+  if (indent >= 0) {
+    String *indentation = NewString("\n");
+    indent = indent - 2; // expected starting indentation
+    while (indent--) { Printf(indentation, " "); }
+    Replaceall(tm, "\n", indentation);
+  }
+  return tm;
+}
+
+void writeIndent(String *out, int indent, int moreindent) {
+  if (indent >= 0) {
+    Printf(out, "\n");
+    for (int i = 0; i < indent + moreindent; ++i) {
+      Printf(out, " ");
+    }
+  } else {
+    Printf(out, " ");
+  }
+}
+
+String *strip_parens(String *string) {
+  char *s = Char(string);
+  int len = Len(string);
+  if (len == 0 || s[0] != '(' || s[len - 1] != ')') {
+    return NewString(string);
+  } else {
+    String *res = NewString("");
+    Write(res, s + 1, len - 2);
+    return res;
+  }
+}
+
+String *convert_literal(String *num_param, String *type) {
+  String *num = strip_parens(num_param), *res;
+  char *s = Char(num);
+
+  if (SwigType_type(type) == T_CHAR) {
+    // Use Racket syntax for character literals
+    if ((Len(num) == 1) && (isgraph(s[0]))) {
+      res = NewStringf("(char->integer #\\%s)", num);
+    } else if (!Strcmp(num, " ")) {
+      res = NewString("(char->integer #\\space)");
+    } else if (!Strcmp(num, "\\n")) {
+      res = NewString("(char->integer #\\newline)");
+    } else if (!Strcmp(num, "\\r")) {
+      res = NewString("(char->integer #\\return)");
+    } else if (!Strcmp(num, "\\t")) {
+      res = NewString("(char->integer #\\tab)");
+    } else {
+      res = NewStringf("(bytes-ref #\"%s\" 0)", num);
+    }
+  } else if (SwigType_type(type) == T_STRING) {
+    // Use Racket syntax for string literals
+    // FIXME: needs escaping!
+    res = NewStringf("\"%s\"", num_param);
+  } else {
+    res = convert_numeric_expr(s);
+  }
+  Delete(num);
+  // Printf(stderr, "constant = '%s', type = %s\n", num_param, type);
+  // Printf(stderr, "  -> '%s'\n", res);
+  return res;
+}
+
+String *convert_numeric_expr(char *s0) {
+  String *out = NewString("");
+  char *s = s0;
+  char *end = s + strlen(s);
+  int read = 0;
+  char op = 0;
+
+  intptr_t ivalue;
+  double dvalue;
+  char svalue[10];
+
+ READ_NUM:
+  sscanf(s, " %n", &read);
+  s = s + read; read = 0;
+  if ((sscanf(s, "%ji%n", &ivalue, &read) == 1) && (s[read] !='.')) {
+    goto GOT_INTEGER;
+  } else if (sscanf(s, "%lf%n", &dvalue, &read) == 1) {
+    // Printf(out, "%lf ", dvalue);
+    Write(out, s, read); Printf(out, " ");
+    s = s + read;
+    goto READ_OP;
+  } else {
+    goto ERROR;
+  }
+
+ GOT_INTEGER:
+  if (read == 1 || s[0] != '0') {
+    // decimal
+    Write(out, s, read);
+  } else if (s[1] == 'x' || s[1] == 'X') {
+    // hexadecimal
+    Printf(out, "#x");
+    Write(out, s + 2, read - 2);
+  } else {
+    // octal
+    Printf(out, "#o");
+    Write(out, s + 1, read - 1);
+  }
+  Printf(out, " ");
+  s = s + read;
+  goto READ_OP;
+
+ READ_OP:
+  sscanf(s, " %n", &read);
+  s = s + read; read = 0;
+  if (s == end) {
+    goto SUCCESS;
+  } else if (sscanf(s, "%1[|]%n", &svalue[0], &read)) {
+    if (!op || op == '|') {
+      op = '|';
+      s = s + read;
+      goto READ_NUM;
+    } else {
+      goto ERROR;
+    }
+  } else if (sscanf(s, "%1[+]%n", &svalue[0], &read)) {
+    if (!op || op == '+') {
+      op = '+';
+      s = s + read;
+      goto READ_NUM;
+    } else {
+      goto ERROR;
+    }
+  } else {
+    goto ERROR;
+  }
+
+ ERROR:
+  Delete(out);
+  return NewStringf("(FIXME #| %s |#)", s0);
+
+ SUCCESS:
+  Chop(out);
+  if (op == 0) {
+    return out;
+  } else if (op == '|') {
+    String *result = NewStringf("(bitwise-ior %s)", out);
+    Delete(out);
+    return result;
+  } else if (op == '+') {
+    String *result = NewStringf("(+ %s)", out);
+    Delete(out);
+    return result;
+  } else {
+    goto ERROR;
+  }
+}
+
+// ============================================================
 
 extern "C" Language *swig_racket(void) {
   return new RACKET();
