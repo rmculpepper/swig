@@ -1,7 +1,12 @@
 # Racket
 
+Run the Racket Swig translator using the following command:
 
-## Obligations
+    swig -racket -extern-all $interface-file.i
+
+The output is a Racket module named `$module.rkt`, where $module is the module
+name declared in the interface file (or overridden by the `-module $module`
+command line option).
 
 The interface module must insert into the "rktheader" section a definition of
 `foreign-lib` and `define-foreign`, where `foreign-lib` is a variable whose
