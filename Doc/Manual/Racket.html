@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <title>Swig and Racket (FFI)</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<h1 id="swig-and-racket-ffi">Swig and Racket (FFI)</h1>
+
+<p>Run the Racket Swig translator using the following command:</p>
+
+<div class="shell"><pre>
+swig -racket -extern-all $interface-file.i
+</pre></div>
+
+<p>The output is a Racket module named <code>$module.rkt</code>,
+where <code>$module</code> is the module name declared in the interface file (or
+overridden by the <code>-module $module</code> command line option).</p>
+
+<p>The interface module must insert into the “rktheader” section a definition
+of <code>foreign-lib</code> and <code>define-foreign</code>,
+where <code>foreign-lib</code> is a variable whose value is the FFI library
+reference and <code>define-foreign</code> is a definition form compatible with
+those produced by <code>define-ffi-definer</code>. For example:</p>
+  
+<div class="code"><pre>
+%insert(&quot;rktheader&quot;) %{
+(define foreign-lib (ffi-lib &quot;libexample.so&quot;))
+(define-ffi-definer define-foreign foreign-lib
+  #:default-make-fail make-not-available)
+%}
+</pre></div>
+
+<h2 id="translations">Translations</h2>
+
+<h3 id="type-declarations">Type declarations</h3>
+
+<p>The translations of type declarations are discussed in the “Types” section.</p>
+
+<h3 id="constant-definitions">Constant definitions</h3>
+
+<p>A <code>#define</code> constant is translated to a Racket variable
+definition. If the translator cannot handle the right-hand side (for example, if
+it is a nontrivial arithmetic expression), it emits a Racket expression that
+calls a fictitious <code>FIXME</code> Racket function.</p>
+
+<h3 id="variable-declarations">Variable declarations</h3>
+
+<p>A variable is translated to a procedure similar to the result
+of <code>make-c-parameter</code>. Calling the procedure with zero arguments
+retrieves the variable’s current value, and calling it with one argument updates
+the variable’s value. If the variable is declared immutable (for example, with
+the <code>%immutable</code> directive), calling the procedure to set the
+variable’s value raises an error.</p>
+
+<p>A variable wrapper can also be customized by the <code>%rename</code>
+directive and the “var-options” feature, which can contain
+either <code>#:fail</code> or <code>#:make-fail</code> keyword arguments,
+similar to those supported by the result of <code>define-ffi-definer</code>. For
+example:</p>
+
+<div class="code"><pre>
+%feature(&quot;var-options&quot;) undef_var &quot;#:fail (lambda () #f)&quot;
+// %feature(&quot;var-options&quot;) undef_var &quot;#:make-fail make-not-available&quot;
+int undef_var;
+</pre></div>
+
+<p>If the foreign library does not contain <code>undef_var</code>, the
+Racket <code>undef_var</code> variable will get the value <code>#f</code>
+instead of a getter/setter procedure. If the commented-out feature is used
+instead, then <code>undef_var</code> is bound to a procedure that always raises
+an error when applied.</p>
+
+<h3 id="function-declarations">Function declarations</h3>
+
+<p>A function is translated to a procedure defined
+using <code>define-foreign</code> and a <code>_fun</code> type. The formal
+parameters are translated to <code>_fun</code> argument clauses; the default
+translation produces a clause of the following shape for each parameter:</p>
+
+<div class="targetlang"><pre>
+[$argname : $ffitype]   // if the parameter name $argname is given
+$ffitype                // if the parameter name is not given
+</pre></div>
+
+<p>The translation of parameters to clauses can be overridden with the “rktin”
+typemap, which also allows multi-parameter mappings. The mapping must produce as
+many argument clauses as there are parameters in the C declaration. For example,
+here is a multi-parameter typemap that converts a single Racket argument (a
+list) to a pair of length and array arguments to the foreign function:</p>
+
+<div class="code"><pre>
+%typemap(rktin) (int argc, char *argv[]) %{
+  [$1_name : _int = (length $2_name)]
+  [$2_name : (_list i _string)]
+%}
+</pre></div>
+
+<p>A function wrapper can also be customized by the <code>%rename</code>
+directive, the “fun-prefix” feature, the “fun-result” feature, and the
+“fun-options” feature. The following is the general template of a function
+wrapper:</p>
+
+<div class="targetlang"><pre>
+(define-foreign $rktname
+  (_fun $fun-prefix
+        $param-clause ...
+        -&gt; [result : $result-type]
+        -&gt; $result-expr)
+  #:c-id $cname
+  $fun-options)
+</pre></div>
+
+<ul>
+
+<li>The <code>$result-expr</code> is determined as follows:
+<ul>
+  <li>If there is a “fun-result” declaration, its value is used.</li>
+
+  <li>Otherwise, if there are any “rktargout” mappings,
+  then <code>$result-expr</code> is <code>(values result $argout-expr
+  ...)</code>, where each <code>$argout-expr</code> comes from a “rktargout”
+  mapping, in the order that the arguments appear.</li>
+
+  <li>Otherwise, there is no <code>$result-expr</code>. In that case,
+  the <code>-&gt; $result-expr</code> line is omitted, and the <code>[result :
+  $result-type]</code> line is simplified to
+  just <code>$result-type</code>.</li>
+
+</ul></li>
+
+<li>The <code>#:c-id</code> declaration is omitted if there is no renaming.</li>
+
+</ul>
+
+<h2 id="types">Types</h2>
+
+<p>The translation of C types to Racket FFI type descriptors is done by the
+non-standard “rktffi” typemap, but types that have no mapping are handled
+specially by the translator. The special handling cannot be scripted by
+interface modules.</p>
+
+<p>Racket’s “rktffi” typemap maps a C type to a Racket expression that evaluates
+to an FFI type descriptor (satisfying the <code>ctype?</code> predicate).</p>
+
+<h3 id="builtin-typemap">Builtin typemap</h3>
+
+<p>This section shows the built-in type mappings in Lib/racket/racket.swg:</p>
+
+<div class="code"><pre>
+/* Integer types */
+
+%typemap(rktffi) char &quot;_byte&quot;;
+%typemap(rktffi) signed char &quot;_byte&quot;;
+%typemap(rktffi) unsigned char &quot;_ubyte&quot;;
+
+%typemap(rktffi) wchar_t &quot;_wchar&quot;
+
+%typemap(rktffi) short &quot;_short&quot;;
+%typemap(rktffi) signed short &quot;_short&quot;;
+%typemap(rktffi) unsigned short &quot;_ushort&quot;;
+
+%typemap(rktffi) int &quot;_int&quot;;
+%typemap(rktffi) signed int &quot;_int&quot;;
+%typemap(rktffi) unsigned int &quot;_uint&quot;;
+
+%typemap(rktffi) long &quot;_long&quot;;
+%typemap(rktffi) signed long &quot;_long&quot;;
+%typemap(rktffi) unsigned long &quot;_ulong&quot;;
+
+%typemap(rktffi) long long &quot;_llong&quot;;
+%typemap(rktffi) signed long long &quot;_llong&quot;;
+%typemap(rktffi) unsigned long long &quot;_ullong&quot;;
+
+%typemap(rktffi) intptr_t &quot;_intptr&quot;;
+%typemap(rktffi) uintptr_t &quot;_uintptr&quot;;
+
+%typemap(rktffi) int8_t &quot;_int8&quot;
+%typemap(rktffi) uint8_t &quot;_uint8&quot;
+
+%typemap(rktffi) int16_t &quot;_int16&quot;
+%typemap(rktffi) uint16_t &quot;_uint16&quot;
+
+%typemap(rktffi) int32_t &quot;_int32&quot;
+%typemap(rktffi) uint32_t &quot;_uint32&quot;
+
+%typemap(rktffi) int64_t &quot;_int64&quot;
+%typemap(rktffi) uint64_t &quot;_uint64&quot;
+
+%typemap(rktffi) size_t &quot;_size&quot;
+%typemap(rktffi) ssize_t &quot;_ssize&quot;
+%typemap(rktffi) ptrdiff_t &quot;_ptrdiff&quot;
+
+/* Floating-point types */
+
+%typemap(rktffi) float &quot;_float&quot;;
+%typemap(rktffi) double &quot;_double&quot;;
+%typemap(rktffi) long double &quot;_longdouble&quot;
+
+/* Other atomic types */
+
+%typemap(rktffi) bool &quot;_stdbool&quot;
+
+%typemap(rktffi) void &quot;_void&quot;;
+
+/* Pointer types */
+
+%typemap(rktffi) void * &quot;_pointer&quot;;
+%typemap(rktffi) char * &quot;_pointer&quot;;
+%typemap(rktffi) unsigned char * &quot;_pointer&quot;;
+</pre></div>
+
+<p>The default FFI type for <code>double</code> accepts only Racket
+floating-point numbers. To automatically coerce other number (such as exact
+integers and rationals) to floating point, use <code>_double*</code> instead by
+using the following declaration:</p>
+
+<div class="code"><pre>
+// Include in your interface module:
+%typemap(rktffi) double &quot;_double*&quot;;
+</pre></div>
+
+<h3 id="struct-types">Struct types</h3>
+
+<p>A C struct definition is translated to a Racket <code>define-cstruct</code> definition:</p>
+
+<div class="code"><pre>
+struct point_st { int x, y; }
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-cstruct _point_st
+  ([x _int]
+   [y _int]))
+</pre></div>
+
+<p>The Racket definition defines three FFI types:</p>
+<ul>
+
+  <li><code>_point_st</code> is a FFI type for instances of the structure; it
+  corresponds to <code>struct point_st</code></li>
+
+  <li><code>_point_st-pointer</code> is an FFI type for non-nullable pointers to
+  instances; it corresponds to <code>struct point_st *</code> but disallows
+  NULL</li>
+
+  <li><code>_point_st-pointer/null</code> is an FFI type for nullable pointers
+  to instances; it corresponds to <code>struct point_st *</code> and allows NULL
+    (represented by <code>#f</code>)</li>
+
+</ul>
+
+<p>Racket pointers carry tags, and <code>_point_st-pointer/null</code> requires
+a pointer argument to have the corresponding tag (<code>point_st-tag</code>,
+which has the value <code>'point_st</code>). See the Racket FFI documentation
+for details.</p>
+
+<p>The translator records known struct names; this information is used by the
+translation of pointer types (see the “Pointer types” section), and it is
+propagated by typedefs (see the “Typedefs” section).</p>
+
+<h3 id="typedefs">Typedefs</h3>
+
+<p>The handling of a typedef depends on whether the right-hand side is a known
+struct type or not.</p>
+
+<p>A typedef to a known struct type is handled as follows:</p>
+
+<div class="code"><pre>
+typedef struct point_st Point;
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _Point              _point_st)
+(define _Point-pointer      _point_st-pointer)
+(define _Point-pointer/null _pointer_st-pointer/null)
+</pre></div>
+
+<p>In addition, the typedef name is recorded as a known struct type.</p>
+
+<p>If the typedef occurs strictly before the declaration of the struct type, the
+resulting Racket module will contain variable references before their
+definitions. This can be fixed manually by moving the struct-generated
+definition before the typedef-generated definitions.</p>
+
+<p>A typedef to an anonymous struct declaration is handled as if the typedef
+name replaced the struct name:</p>
+
+<div class="code"><pre>
+typedef struct { int x, y, z; } Point3d;
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-cstruct _Point3d ([x _int] [y _int] [z _int]))
+</pre></div>
+
+<p>If the target of a typedef is not a known struct type, then the translation
+does not include pointer types:</p>
+
+<div class="code"><pre>
+typedef int errcode;
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _errcode _int)
+</pre></div>
+
+<h3 id="union-types">Union types</h3>
+
+<p>A C union declaration is translated to a Racket definition
+using <code>_union</code>:</p>
+
+<div class="code"><pre>
+union shape_t { rectangle_t rect ; circle_t circ; };
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _shape_t (_union _rectangle_t _circle_t))
+</pre></div>
+
+<h3 id="enumeration-types">Enumeration types</h3>
+
+<p>A C enumeration declaration is translated to a Racket definition
+using <code>_enum</code>:</p>
+
+<div class="code"><pre>
+enum direction_t { north, east, south, west, up = 100 };
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _direction_t (_enum &#39;(north east south west up = 100)))
+</pre></div>
+
+<h3 id="pointer-types">Pointer types</h3>
+
+<p>The translation of a C pointer type depends on the target type.</p>
+
+<p>If the target type is typemapped to a Racket FFI type for a known struct type
+(or typedef to a known struct type), then the associated nullable pointer type
+is produced.</p>
+
+<p>If the target type is a known struct type (or typedef to a known struct
+type), then the associated nullable pointer type is produced.</p>
+
+<div class="code"><pre>
+struct point_st *   =&gt;  _point_st-pointer/null
+Point *             =&gt;  _Point-pointer/null
+</pre></div>
+
+<p>If the target type is a function type, then the translation of the function
+type is produced.</p>
+
+<p>Otherwise, an expression of the form <code>(_pointer-to target-type)</code>
+is produced, where <code>target-type</code> is the translation of the target
+type. Note, however, that <code>_pointer-to</code> is a constant function that
+always produces <code>_pointer</code>; the <code>target-type</code> is included
+to aid manual editing of the resulting code.</p>
+
+<div class="code"><pre>
+int *               =&gt;  (_pointer-to _int)  =  _pointer
+</pre></div>
+
+<p>Qualifiers like <code>const</code> are discarded. The generated Racket code
+does not respect mutation restrictions based on <code>const</code>.</p>
+
+<h2 id="misc-notes">Misc notes</h2>
+
+<p>If the translator cannot translate an expression (such as the right-hand side
+of a <code>#define</code>), it emits a call to an unbound <code>FIXME</code>
+Racket function.</p>
+
+<p>If the translator cannot translate a type, it emits a call to an
+unbound <code>_FIXME</code> function.</p>
+
+<p>A “block” … FIXME</p>
+
+<h3 id="out-parameters">Out parameters</h3>
+
+<p>For out (or inout) parameters, an idiomatic translation would use
+the special <code>_ptr</code> function parameter syntax, as follows:</p>
+
+<div class="code"><pre>
+void f(int *outparam);
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-foreign f
+  (_fun [outparam : (_ptr o _int)]
+        -&gt; _void
+        -&gt; outparam))
+</pre></div>
+
+<p>Without intervention, the default pointer type translation produces the
+following Racket wrapper:</p>
+
+<div class="targetlang"><pre>
+(define-foreign f
+  (_fun [outparam : (_pointer-to _int)]
+        -&gt; _void))
+</pre></div>
+
+<p>The argument can be treated as an out-parameter by using the “rktin” typemap
+to override the default parameter clause to use the <code>_ptr</code> argument
+syntax:</p>
+
+<div class="code"><pre>
+%typemap(rktin) int *outparam %{
+  [outparam : (_ptr o _int)]
+%}
+</pre></div>
+
+<p>And the result of the wrapper can be set using the “fun-result” feature:</p>
+
+<div class="code"><pre>
+%feature(&quot;fun-result&quot;) f &quot;outparam&quot;;
+</pre></div>
+
+<p>As an alternative, the argument can be automatically added to the function
+result values by using the “argout” typemap. In this example, that would
+cause <code>f</code> to return two values, the first of which is
+always <code>(void)</code>, so it makes more sense to use the “fun-result”
+feature to replace the result expression entirely.</p>
+
+<div class="code"><pre>
+%typemap(&quot;rktargout&quot;) int *outparam &quot;outparam&quot;;
+// %typemap(&quot;rktargout&quot;) int *outparam &quot;$1_name&quot;;  // alternative
+</pre></div>
+
+<h3 id="summary-of-wrapper-options">Summary of wrapper options</h3>
+
+<p>FIXME: clarify - code is expr vs list of clauses vs etc, other constraints -
+what variables are bound in each block?</p>
+
+<div class="code"><pre>
+%feature(&quot;fun-prefix&quot;) f &quot;(x y z) ::&quot;;
+%feature(&quot;fun-result&quot;) f &quot;(values $result outparam)&quot;;
+</pre></div>
+
+</body>
+</html>
