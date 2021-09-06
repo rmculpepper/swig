@@ -1,4 +1,6 @@
-# Racket
+% Swig and Racket (FFI)
+
+# Swig and Racket (FFI)
 
 Run the Racket Swig translator using the following command:
 
@@ -297,9 +299,83 @@ A "block" ... FIXME
 
 ### Out parameters
 
-For out (or inout) parameters, an idiomatic translation would use the `_ptr`
-function parameter syntax (which is not, strictly speaking, an FFI type), as
-follows:
+
+### Summary of wrapper options
+
+FIXME: clarify
+- code is expr vs list of clauses vs etc, other constraints
+- what variables are bound in each block?
+
+    %feature("fun-prefix") f "(x y z) ::";
+    %feature("fun-result") f "(values $result outparam)";
+
+
+## Supported and unsupported Swig features
+
+Some of these are unsupported because they are unneeded.
+
+Unsupported doesn't necessarily mean "raises an error"; it just means don't do that.
+
+### Default arguments (5.4.8, 13.5)
+
+Default arguments are not directly supported. That is, the following declaration
+syntax is not supported:
+
+    int plot(double x, double y, int color=WHITE);  // NOT SUPPORTED
+    
+Also, the "default" typemap method is not supported. (See the "Common typemap
+method" section below.)
+
+To create a wrapper with default arguments, use the "fun-prefix" feature to
+specify the formal parameter list (ending in `::`) for the `_fun` syntax:
+
+    %feature("fun-prefix") plot "(x y [color 0]) ::"
+    int plot (double x, double y, int color);
+    =>
+    (define-foreign plot
+      (_fun (x y [color 0]) ::
+            [x : _double]
+            [y : _double]
+            [flags : _int]
+            -> int))
+
+### `%constant` functions, `%callback`, `%nocallback` (5.4.9)
+
+    %constant int add(int, int);
+    
+In many cases, you can just use the ordinary binding of `add`.
+FIXME: example
+
+### `%extend` (5.5.6)
+
+???
+
+### Nested structures (5.5.7)
+
+supported?
+
+### Code insertion (5.6)
+
+The standard `"begin"`, `"runtime"`, `"header"`, `"wrapper"`, and
+`"init"` targets are not used.
+
+Use `"rktbegin"`, `"rktheader"`, `"rktwrapper"`, `"rktinit"` instead.
+- `rktbegin`: before the `#lang racket/base` line
+- `rktheader`: before the wrappers; define `foreign-lib` and `define-foreign` here
+- `rktwrapper`: wrappers are generated here
+- `rktinit`: extra code after all the wrappers are defined, emitted at
+  module top-level (that is, not within a function)
+
+Use only the `"..."` and `"%{...%}"` notations for inserted code. Do
+not use `{...}`.
+
+Do not use `%inline`, since it emits code to the `"header"` target.
+
+### Input, output, and input/output parameters (12.1.2, 12.1.3, 12.1.4)
+
+For a function with out (or inout) parameters, an idiomatic wrapper
+would use the special `_ptr` function parameter syntax (not an FFI
+type), as follows:
 
     void f(int *outparam);
     =>
@@ -308,8 +384,7 @@ follows:
             -> _void
             -> outparam))
 
-Without intervention, the default pointer type translation produces the
-following Racket wrapper:
+But by default, the translator produces the following Racket wrapper:
 
     (define-foreign f
       (_fun [outparam : (_pointer-to _int)]
@@ -335,12 +410,106 @@ entirely.
     %typemap("rktargout") int *outparam "outparam";
     // %typemap("rktargout") int *outparam "$1_name";  // alternative
 
+Parameters that are used for both input and output should use the
+`(_ptr io _)` function parameter syntax instead. Likewise, parameters
+that are only used for input should use the `(_ptr i _)` function
+syntax.
 
-### Summary of wrapper options
+FIXME: "typemap.i" but only works for primitive types??
 
-FIXME: clarify
-- code is expr vs list of clauses vs etc, other constraints
-- what variables are bound in each block?
+### Typemap special variables (13.4.3)
 
-    %feature("fun-prefix") f "(x y z) ::";
-    %feature("fun-result") f "(values $result outparam)";
+The special variables are handled by Swig, so they are supported.
+
+The `$typemap(method, typepattern)` macro is supported, but beware that the
+Racket translator only uses typemaps for certain builtin base types.
+
+### Common typemap methods (13.5)
+
+The common typemap methods ("in", "out", etc) are not supported. 
+
+The common "in" method has two Racket analogues:
+- "rktin" maps parameters to `_fun` parameter clauses
+- "rktffi" maps parameter types to Racket FFI types (for parameters where
+  "rktin" did not match)
+  
+The common "argout" method has the Racket analogue "rktargout". It maps
+parameters to Racket expressions to be included in the result values.
+
+The common "out" method has the Racket analogue "rktffi".
+
+The "default" typemap has no direct Racket analogue. See the "Default arguments"
+section above.
+
+The "check" method has no direct Racket analogue. Use a custom FFI type (see
+`make-ctype`), use a wrapper (use the "fun-options" feature to give a `#:wrap`
+argument to `_fun`), or perform the check at a higher level before calling the
+wrapper function. (FIXME: example)
+
+    %insert("rktheader") %{
+    (define _pos-int
+      (make-ctype _int
+                  (lambda (v) (if (> v 0) v (error '_pos-int "not positive: ~e" v)))))
+    %}
+    %typemap(ffitype) int positive "_pos-int";
+    int isqrt(int positive);
+    =>
+    (define-foreign bar
+      (_fun [positive : _pos-int]
+            -> _int))
+            
+To reject NULL pointers in arguments, where the target type is a structure type,
+change the "rktffi" mapping of the parameter to use the `_structname-pointer`
+type instead of the default `_structname-pointer/null` type.
+
+The following typemap methods have no Racket analogue: "typecheck", "arginit",
+"freearg", "newfree", "ret", "memberin", "varin", "varout", and "throws".
+
+### Multi-argument typemaps (13.9)
+
+The "rktin" method supports multi-argument type mappings. The mapping must
+produce as many argument clauses as there are parameters in the C
+declaration. For example, here is a multi-parameter typemap that converts a
+single Racket argument (a list) to a pair of length and array arguments to the
+foreign function:
+
+    %typemap(rktin) (int argc, char *argv[]) %{
+      [$1_name : _int = (length $2_name)]
+      [$2_name : (_list i _string)]
+    %}
+
+### Object ownership, `%newobject`, `%delobject` (14.2)
+
+The `%newobject` and `%delobject` directives are not supported. Use the
+"fun-options" feature and Racket's `ffi/unsafe/alloc` library instead. For
+example:
+
+    %feature("fun-options") blah "#:wrap (allocator free)"
+    Foo *blah() { return new Foo(); }
+
+This will cause Racket to call the Racket `free` function on the allocated
+object when the Racket cpointer wrapping it is garbage-collected. The the
+documentation for `ffi/unsafe/alloc` for more information.
+
+### Contracts, `%contract` (15)
+
+Contracts are not supported at the FFI wrapper level.
+FIXME
+
+### Arithmetic expressions
+
+Arithmetic expressions can occur in `#define` right-hand sides and array
+bounds. The Racket translator only handles trivial expressions; it generates a
+call to the fictitious `FIXME` function for non-trivial expressions that must be
+fixed by hand.
+
+### Other unsupported features
+
+- C++ (6, 7, 8, 9)
+- constraints, the `constraints.i` library (12.2)
+- temporary/local variables introduced by typemaps (13)
+- typemap fragments, `%fragment` (13.11)
+- the run-time type checker (13.12)
+- typemaps and overloading (13.13) (FIXME)
+- `%exception` (14.1)
+- variable-length arguments, `%varargs` (16)

@@ -13,12 +13,13 @@
 <p>Run the Racket Swig translator using the following command:</p>
 
 <div class="shell"><pre>
-swig -racket -extern-all $interface-file.i
+swig -racket -extern-all <em>interface-file.i</em>
 </pre></div>
 
-<p>The output is a Racket module named <code>$module.rkt</code>,
-where <code>$module</code> is the module name declared in the interface file (or
-overridden by the <code>-module $module</code> command line option).</p>
+<p>The output is a Racket module named <code><em>module.rkt</em></code>,
+where <code><em>module</em></code> is the module name declared in the interface
+file (or overridden by the <code>-module <em>module</em></code> command line
+option).</p>
 
 <p>The interface module must insert into the “rktheader” section a definition
 of <code>foreign-lib</code> and <code>define-foreign</code>,
@@ -82,8 +83,8 @@ parameters are translated to <code>_fun</code> argument clauses; the default
 translation produces a clause of the following shape for each parameter:</p>
 
 <div class="targetlang"><pre>
-[$argname : $ffitype]   // if the parameter name $argname is given
-$ffitype                // if the parameter name is not given
+[<em>argname</em> : <em>ffitype</em>]    // if the parameter name <em>argname</em> is given
+<em>ffitype</em>                // if the parameter name is not given
 </pre></div>
 
 <p>The translation of parameters to clauses can be overridden with the “rktin”
@@ -105,30 +106,31 @@ directive, the “fun-prefix” feature, the “fun-result” feature, and the
 wrapper:</p>
 
 <div class="targetlang"><pre>
-(define-foreign $rktname
-  (_fun $fun-prefix
-        $param-clause ...
-        -&gt; [result : $result-type]
-        -&gt; $result-expr)
-  #:c-id $cname
-  $fun-options)
+(define-foreign <em>rktname</em>
+  (_fun <em>fun-prefix</em>
+        <em>param-clause</em> ...
+        -&gt; [result : <em>result-type</em>]
+        -&gt; <em>result-expr</em>)
+  #:c-id <em>cname</em>
+  <em>fun-options</em>)
 </pre></div>
 
 <ul>
 
-<li>The <code>$result-expr</code> is determined as follows:
+<li>The <code><em>result-expr</em></code> is determined as follows:
 <ul>
   <li>If there is a “fun-result” declaration, its value is used.</li>
 
   <li>Otherwise, if there are any “rktargout” mappings,
-  then <code>$result-expr</code> is <code>(values result $argout-expr
-  ...)</code>, where each <code>$argout-expr</code> comes from a “rktargout”
-  mapping, in the order that the arguments appear.</li>
+  then <code><em>result-expr</em></code> is <code>(values
+  result <em>argout-expr</em> ...)</code>, where
+  each <code><em>argout-expr</em></code> comes from a “rktargout” mapping, in
+  the order that the arguments appear.</li>
 
-  <li>Otherwise, there is no <code>$result-expr</code>. In that case,
-  the <code>-&gt; $result-expr</code> line is omitted, and the <code>[result :
-  $result-type]</code> line is simplified to
-  just <code>$result-type</code>.</li>
+  <li>Otherwise, there is no <code><em>result-expr</em></code>. In that case,
+  the <code>-&gt; <em>result-expr</em></code> line is omitted, and the <code>[result :
+  <em>result-type</em>]</code> line is simplified to
+  just <code><em>result-type</em></code>.</li>
 
 </ul></li>
 
@@ -438,6 +440,264 @@ what variables are bound in each block?</p>
 %feature(&quot;fun-prefix&quot;) f &quot;(x y z) ::&quot;;
 %feature(&quot;fun-result&quot;) f &quot;(values $result outparam)&quot;;
 </pre></div>
+
+<h2 id="supported-and-unsupported-swig-features">Supported and unsupported Swig features</h2>
+
+<p>Some of these are unsupported because they are unneeded.</p>
+
+<h3 id="default-arguments-5.4.8-13.5">Default arguments (5.4.8, 13.5)</h3>
+
+<p>Default arguments are not directly supported. That is, the following
+declaration syntax is not supported:</p>
+
+<div class="code"><pre>
+int plot(double x, double y, int color=WHITE);  // NOT SUPPORTED
+</pre></div>
+
+<p>Also, the “default” typemap method is not supported. (See the “Common typemap
+method” section below.)</p>
+
+<p>To create a wrapper with default arguments, use the “fun-prefix” feature to
+specify the formal parameter list (ending in <code>::</code>) for
+the <code>_fun</code> syntax:</p>
+
+<div class="code"><pre>
+%feature(&quot;fun-prefix&quot;) plot &quot;(x y [color 0]) ::&quot;
+int plot (double x, double y, int color);
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-foreign plot
+  (_fun (x y [color 0]) ::
+        [x : _double]
+        [y : _double]
+        [flags : _int]
+        -&gt; int))
+</pre></div>
+
+<h3 id="constant-functions-callback-nocallback-5.4.9"><code>%constant</code>
+functions, <code>%callback</code>, <code>%nocallback</code> (5.4.9)</h3>
+
+<div class="code"><pre>
+%constant int add(int, int);
+</pre></div>
+
+<p>In many cases, you can just use the ordinary binding of <code>add</code>. FIXME: example</p>
+
+<h3 id="extend-5.5.6"><code>%extend</code> (5.5.6)</h3>
+
+<p>???</p>
+
+<h3 id="nested-structures-5.5.7">Nested structures (5.5.7)</h3>
+
+<p>supported?</p>
+
+<h3 id="code-insertion-5.6">Code insertion (5.6)</h3>
+
+<p>The standard <code>"begin"</code>, <code>"runtime"</code>, <code>"header"</code>,
+<code>"wrapper"</code>, and <code>"init"</code> targets are not used.</p>
+
+<p>Use <code>"rktbegin"</code>, <code>"rktheader"</code>, <code>"rktwrapper"</code>, <code>"rktinit"</code>
+instead.</p>
+
+<ul>
+
+<li><code>rktbegin</code>: before the <code>#lang racket/base</code> line</li>
+
+<li><code>rktheader</code>: before the wrappers; define <code>foreign-lib</code>
+and <code>define-foreign</code> here</li>
+
+<li><code>rktwrapper</code>: wrappers are generated here</li>
+
+<li><code>rktinit</code>: extra code after all the wrappers are defined, emitted
+at module top-level (that is, not within a function)</li>
+
+</ul>
+
+<p>Use only the <code>"..."</code> and <code>%{...%}</code> notations for inserted code. Do not use <code>{...}</code>.</p>
+
+<p>Do not use <code>%inline</code>, since it emits code to the <code>"header"</code> target.</p>
+
+<h3 id="input-output-and-inputoutput-parameters-12.1.2-12.1.3-12.1.4">Input, output, and input/output parameters (12.1.2, 12.1.3, 12.1.4)</h3>
+
+<p>For a function with out (or inout) parameters, an idiomatic wrapper would use
+the special <code>_ptr</code> function parameter syntax (not an FFI type), as
+follows:</p>
+
+<div class="code"><pre>
+void f(int *outparam);
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-foreign f
+  (_fun [outparam : (_ptr o _int)]
+        -&gt; _void
+        -&gt; outparam))
+</pre></div>
+
+<p>But by default, the translator produces the following Racket wrapper:</p>
+
+<div class="targetlang"><pre>
+(define-foreign f
+  (_fun [outparam : (_pointer-to _int)]
+        -&gt; _void))
+</pre></div>
+
+<p>The argument can be treated as an out-parameter by using the “rktin” typemap
+to override the default parameter clause to use the <code>(_ptr o ___)</code>
+argument syntax:</p>
+
+<div class="code"><pre>
+%typemap(rktin) int *outparam %{
+  [outparam : (_ptr o _int)]
+%}
+</pre></div>
+
+<p>And the result of the wrapper can be set using the “fun-result” feature:</p>
+
+<div class="code"><pre>
+%feature(&quot;fun-result&quot;) f &quot;outparam&quot;;
+</pre></div>
+
+<p>As an alternative, the argument can be automatically added to the function
+result values by using the “argout” typemap. In this example, that would
+cause <code>f</code> to return two values, the first of which is
+always <code>(void)</code>, so it makes more sense to use the “fun-result”
+feature to replace the result expression entirely.</p>
+
+<div class="code"><pre>
+%typemap(&quot;rktargout&quot;) int *outparam &quot;outparam&quot;;
+// %typemap(&quot;rktargout&quot;) int *outparam &quot;$1_name&quot;;  // alternative
+</pre></div>
+
+<p>Parameters that are used for both input and output should use the <code>(_ptr
+io _)</code> function parameter syntax instead. Likewise, parameters that are
+only used for input should use the <code>(_ptr i _)</code> function syntax.</p>
+
+<p>FIXME: “typemap.i” but only works for primitive types??</p>
+
+<h3 id="typemap-special-variables-13.4.3">Typemap special variables (13.4.3)</h3>
+
+<p>The special variables are handled by Swig, so they are supported.</p>
+
+<p>The <code>$typemap(method, typepattern)</code> macro is supported, but beware
+that the Racket translator only uses typemaps for certain builtin base
+types.</p>
+
+<h3 id="common-typemap-methods-13.5">Common typemap methods (13.5)</h3>
+
+<p>The common typemap methods (“in”, “out”, etc) are not supported.</p>
+
+<p>The common “in” method has two Racket analogues:</p>
+
+<ul>
+
+<li>“rktin” maps parameters to <code>_fun</code> parameter clauses</li>
+
+<li>“rktffi” maps parameter types to Racket FFI types (for parameters where “rktin” did not match)</li>
+
+</ul>
+
+<p>The common “argout” method has the Racket analogue “rktargout”. It maps
+parameters to Racket expressions to be included in the result values.</p>
+
+<p>The common “out” method has the Racket analogue “rktffi”.</p>
+
+<p>The “default” typemap has no direct Racket analogue. See the “Default
+arguments” section above.</p>
+
+<p>The “check” method has no direct Racket analogue. Use a custom FFI type
+(see <code>make-ctype</code>), use a wrapper (use the “fun-options” feature to
+give a <code>#:wrap</code> argument to <code>_fun</code>), or perform the check
+at a higher level before calling the wrapper function. (FIXME: example)</p>
+
+<div class="code"><pre>
+%insert(&quot;rktheader&quot;) %{
+(define _pos-int
+  (make-ctype _int
+              (lambda (v) (if (&gt; v 0) v (error &#39;_pos-int &quot;not positive: ~e&quot; v)))))
+%}
+%typemap(ffitype) int positive &quot;_pos-int&quot;;
+int isqrt(int positive);
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="code"><pre>
+(define-foreign bar
+  (_fun [positive : _pos-int]
+        -&gt; _int))
+</pre></div>
+
+<p>To reject NULL pointers in arguments, where the target type is a structure
+type, change the “rktffi” mapping of the parameter to use
+the <code>_structname-pointer</code> type instead of the
+default <code>_structname-pointer/null</code> type.</p>
+
+<p>The following typemap methods have no Racket analogue: “typecheck”,
+“arginit”, “freearg”, “newfree”, “ret”, “memberin”, “varin”, “varout”, and
+“throws”.</p>
+
+<h3 id="multi-argument-typemaps-13.9">Multi-argument typemaps (13.9)</h3>
+
+<p>The “rktin” method supports multi-argument type mappings. The mapping must
+produce as many argument clauses as there are parameters in the C
+declaration. For example, here is a multi-parameter typemap that converts a
+single Racket argument (a list) to a pair of length and array arguments to the
+foreign function:</p>
+
+<div class="code"><pre>
+%typemap(rktin) (int argc, char *argv[]) %{
+  [$1_name : _int = (length $2_name)]
+  [$2_name : (_list i _string)]
+%}
+</pre></div>
+
+<h3 id="object-ownership-newobject-delobject-14.2">Object ownership, <code>%newobject</code>, <code>%delobject</code> (14.2)</h3>
+
+<p>The <code>%newobject</code> and <code>%delobject</code> directives are not
+supported. Use the “fun-options” feature and
+Racket’s <code>ffi/unsafe/alloc</code> library instead. For example:</p>
+
+<div class="code"><pre>
+%feature(&quot;fun-options&quot;) blah &quot;#:wrap (allocator free)&quot;
+Foo *blah() { return new Foo(); }
+</pre></div>
+
+<p>This will cause Racket to call the Racket <code>free</code> function on the
+allocated object when the Racket cpointer wrapping it is garbage-collected. The
+the documentation for <code>ffi/unsafe/alloc</code> for more information.</p>
+
+<h3 id="contracts-contract-15">Contracts, <code>%contract</code> (15)</h3>
+
+<p>Contracts are not supported at the FFI wrapper level. FIXME</p>
+
+<h3 id="arithmetic-expressions">Arithmetic expressions</h3>
+
+<p>Arithmetic expressions can occur in <code>#define</code> right-hand sides and
+array bounds. The Racket translator only handles trivial expressions; it
+generates a call to the fictitious <code>FIXME</code> function for non-trivial
+expressions that must be fixed by hand.</p>
+
+<h3 id="other-unsupported-features">Other unsupported features</h3>
+
+<ul>
+
+<li>C++ (6, 7, 8, 9)</li>
+
+<li>constraints, the <code>constraints.i</code> library (12.2)</li>
+
+<li>temporary/local variables introduced by typemaps (13)</li>
+
+<li>typemap fragments, <code>%fragment</code> (13.11)</li>
+
+<li>the run-time type checker (13.12)</li>
+
+<li>typemaps and overloading (13.13) (FIXME)</li>
+
+<li><code>%exception</code> (14.1)</li>
+
+<li>variable-length arguments, <code>%varargs</code> (16)</li>
+
+</ul>
 
 </body>
 </html>
