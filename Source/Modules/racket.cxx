@@ -17,13 +17,10 @@
 
 /* TODO:
  * - add variables to "rktin" typemap rhss, like $ffitype ?
- * - function options:
- *   - fixed value for argument, eg "[x : _int = 0]" -- possible via typemap(in)
  * - better, more consistent C->Racket expression handling
  *   - detect #define right-hand sides that are not legal Racket
  *     eg, "#define X (Y|0x01)"
  *   - array dimensions
- * - allow changing `define-foreign` name?
  * - allow customizing provided names?
  *   or put wrappers in submodule, let interface file re-export, add contracts, etc?
  * - fix memory leaks
