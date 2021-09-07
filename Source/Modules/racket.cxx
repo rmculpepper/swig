@@ -244,9 +244,15 @@ int RACKET::functionWrapper(Node *n) {
     writeIndent(f_rktwrap, 2 + strlen("(_fun "), 0);
     Printf(f_rktwrap, "-> %s)", result_expr);
   } else if (Len(argouts)) {
-    Printf(f_rktwrap, "-> [result : %s]", restype);
-    writeIndent(f_rktwrap, 2 + strlen("(_fun "), 0);
-    Printf(f_rktwrap, "-> (values result");
+    if (!Strcmp(restype, "_void")) {
+      Printf(f_rktwrap, "-> _void", restype);
+      writeIndent(f_rktwrap, 2 + strlen("(_fun "), 0);
+      Printf(f_rktwrap, "-> (values");
+    } else {
+      Printf(f_rktwrap, "-> [result : %s]", restype);
+      writeIndent(f_rktwrap, 2 + strlen("(_fun "), 0);
+      Printf(f_rktwrap, "-> (values result");
+    }
     for (Iterator iter = First(argouts); iter.item; iter = Next(iter)) {
       Printf(f_rktwrap, " %s", iter.item);
     }
@@ -371,7 +377,7 @@ int RACKET::enumDeclaration(Node *n) {
     String *slot_name = Getattr(c, "name");
     String *value = Getattr(c, "enumvalue");
     if (!first) { Printf(f_rktwrap, " "); } else { first = 0; }
-    if (value && !Strcmp(value, "")) {
+    if (value && Strcmp(value, "")) {
       Printf(f_rktwrap, "%s = %s", slot_name, value);
     } else {
       Printf(f_rktwrap, "%s", slot_name);
@@ -648,6 +654,8 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
       offset = strlen("class ");
     } else if (!Strncmp(str, "union ", strlen("union "))) {
       offset = strlen("union ");
+    } else if (!Strncmp(str, "enum ", strlen("enum "))) {
+      offset = strlen("enum ");
     } else {
       offset = 0;
     }
