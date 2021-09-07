@@ -46,7 +46,21 @@ those produced by <code>define-ffi-definer</code>. For example:</p>
 <p>A <code>#define</code> constant is translated to a Racket variable
 definition. If the translator cannot handle the right-hand side (for example, if
 it is a nontrivial arithmetic expression), it emits a Racket expression that
-calls a fictitious <code>FIXME</code> Racket function.</p>
+calls a fictitious <code>FIXME</code> Racket function. For example:</p>
+
+<div class="code"><pre>
+#define ONE 1
+#define TEN 0xA
+#define ELEVEN (ONE + TEN)
+#define FIFTY (4 * ELEVEN + 6)
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define ONE 1)
+(define TEN #xA)
+(define ELEVEN (+ 1 #xA)
+(define FIFTY (FIXME #| 4*(1+0xA) +6 |#))
+</pre></div>
 
 <h3 id="variable-declarations">Variable declarations</h3>
 
@@ -147,6 +161,9 @@ interface modules.</p>
 
 <p>Racket’s “rktffi” typemap maps a C type to a Racket expression that evaluates
 to an FFI type descriptor (satisfying the <code>ctype?</code> predicate).</p>
+
+<p>If the translator cannot translate a type, it emits an expression
+that calls a fictitious <code>_FIXME</code> function.</p>
 
 <h3 id="builtin-typemap">Builtin typemap</h3>
 
@@ -367,79 +384,6 @@ int *               =&gt;  (_pointer-to _int)  =  _pointer
 
 <p>Qualifiers like <code>const</code> are discarded. The generated Racket code
 does not respect mutation restrictions based on <code>const</code>.</p>
-
-<h2 id="misc-notes">Misc notes</h2>
-
-<p>If the translator cannot translate an expression (such as the right-hand side
-of a <code>#define</code>), it emits a call to an unbound <code>FIXME</code>
-Racket function.</p>
-
-<p>If the translator cannot translate a type, it emits a call to an
-unbound <code>_FIXME</code> function.</p>
-
-<p>A “block” … FIXME</p>
-
-<h3 id="out-parameters">Out parameters</h3>
-
-<p>For out (or inout) parameters, an idiomatic translation would use
-the special <code>_ptr</code> function parameter syntax, as follows:</p>
-
-<div class="code"><pre>
-void f(int *outparam);
-</pre></div>
-<div class="indent"><pre>=&gt;</pre></div>
-<div class="targetlang"><pre>
-(define-foreign f
-  (_fun [outparam : (_ptr o _int)]
-        -&gt; _void
-        -&gt; outparam))
-</pre></div>
-
-<p>Without intervention, the default pointer type translation produces the
-following Racket wrapper:</p>
-
-<div class="targetlang"><pre>
-(define-foreign f
-  (_fun [outparam : (_pointer-to _int)]
-        -&gt; _void))
-</pre></div>
-
-<p>The argument can be treated as an out-parameter by using the “rktin” typemap
-to override the default parameter clause to use the <code>_ptr</code> argument
-syntax:</p>
-
-<div class="code"><pre>
-%typemap(rktin) int *outparam %{
-  [outparam : (_ptr o _int)]
-%}
-</pre></div>
-
-<p>And the result of the wrapper can be set using the “fun-result” feature:</p>
-
-<div class="code"><pre>
-%feature(&quot;fun-result&quot;) f &quot;outparam&quot;;
-</pre></div>
-
-<p>As an alternative, the argument can be automatically added to the function
-result values by using the “argout” typemap. In this example, that would
-cause <code>f</code> to return two values, the first of which is
-always <code>(void)</code>, so it makes more sense to use the “fun-result”
-feature to replace the result expression entirely.</p>
-
-<div class="code"><pre>
-%typemap(&quot;rktargout&quot;) int *outparam &quot;outparam&quot;;
-// %typemap(&quot;rktargout&quot;) int *outparam &quot;$1_name&quot;;  // alternative
-</pre></div>
-
-<h3 id="summary-of-wrapper-options">Summary of wrapper options</h3>
-
-<p>FIXME: clarify - code is expr vs list of clauses vs etc, other constraints -
-what variables are bound in each block?</p>
-
-<div class="code"><pre>
-%feature(&quot;fun-prefix&quot;) f &quot;(x y z) ::&quot;;
-%feature(&quot;fun-result&quot;) f &quot;(values $result outparam)&quot;;
-</pre></div>
 
 <h2 id="supported-and-unsupported-swig-features">Supported and unsupported Swig features</h2>
 
