@@ -69,6 +69,8 @@ public:
   virtual int membervariableHandler(Node *);
   virtual int memberconstantHandler(Node *);
   virtual int memberfunctionHandler(Node *);
+  virtual int constructorDeclaration(Node *);
+  virtual int destructorDeclaration(Node *);
   List *entries;
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
@@ -528,19 +530,39 @@ int RACKET::classDeclaration(Node *n) {
 }
 
 int RACKET::membervariableHandler(Node *n) {
+  // Printf(stderr, "membervariableHandler %s\n", Getattr(n, "name"));
   if (mctx) {
     Append(mctx->members, n);
   }
-  return Language::membervariableHandler(n);
+  if (1) {
+    return SWIG_OK;
+  } else {
+    // This declares getter and setter functions for the members.
+    return Language::membervariableHandler(n);
+  }
 }
 
-int RACKET::memberconstantHandler(Node *n) {
-  return Language::memberconstantHandler(n);
+int RACKET::memberconstantHandler(Node *) {
+  // Printf(stderr, "memberconstantHandler %s\n", Getattr(n, "name"));
+  // return Language::memberconstantHandler(n);
+  return SWIG_NOWRAP;
 }
 
-int RACKET::memberfunctionHandler(Node *n) {
-  return Language::memberfunctionHandler(n);
+int RACKET::memberfunctionHandler(Node *) {
+  // Printf(stderr, "memberfunctionHandler %s\n", Getattr(n, "name"));
+  // return Language::memberfunctionHandler(n);
+  return SWIG_NOWRAP;
 }
+
+int RACKET::constructorDeclaration(Node *) {
+  // Printf(stderr, "constructorDeclaration %s\n", Getattr(n, "name"));
+  return SWIG_NOWRAP;
+}
+int RACKET::destructorDeclaration(Node *) {
+  // Printf(stderr, "destroctorDeclaration %s\n", Getattr(n, "name"));
+  return SWIG_NOWRAP;
+}
+
 
 // ----------------------------------------
 
