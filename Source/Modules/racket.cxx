@@ -415,6 +415,7 @@ void RACKET::emit_forward_structs() {
       // Printf(stderr, "declaring forward struct: %s\n", iter.key);
       Printf(f_rkthead, "\n\n");
       Printf(f_rkthead, "  (define _%s (_FIXME #| incomplete type |#))\n", iter.key);
+      Printf(f_rkthead, "  (define _%s-pointer (_cpointer '%s))", iter.key, iter.key);
       Printf(f_rkthead, "  (define _%s-pointer/null (_cpointer/null '%s))", iter.key, iter.key);
     }
   }
