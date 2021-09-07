@@ -881,12 +881,22 @@ RACKET_SCRIPT = $(SRCDIR)$(RUNME).rkt
 
 # Note: ISRCS, IOBJS not used.
 
+# target for test-cases which generate a *_wrap.c file to compile
+# (used by Examples/test-suite/racket/*, but otherwise uncommon)
 racket: $(SRCDIR_SRCS)
-	#echo $(SRCS) // $(CSRCS) // $(ISRCS) //// $(OBJS) // $(IOBJS)
 	$(SWIG) -racket $(SWIGOPT) -o $(ISRCS) $(INTERFACEPATH)
 	$(CC) -c $(CCSHARED) $(CPPFLAGS) $(CFLAGS) $(ISRCS) $(SRCDIR_CSRCS) $(SRCDIR_SRCS) $(INCLUDES)
 	$(LDSHARED) $(CFLAGS) $(LDFLAGS) $(OBJS) $(IOBJS) $(LIBS) -o $(LIBPREFIX)$(TARGET)$(SO)
 
+# target for examples where no *_wrap.c file is generated, but other sources exist
+# (used by Examples/racket/*, but otherwise uncommon)
+racket_no_wrap: $(SRCDIR_SRCS)
+	$(SWIG) -racket $(SWIGOPT) -o $(ISRCS) $(INTERFACEPATH)
+	$(CC) -c $(CCSHARED) $(CPPFLAGS) $(CFLAGS) $(SRCDIR_CSRCS) $(SRCDIR_SRCS) $(INCLUDES)
+	$(LDSHARED) $(CFLAGS) $(LDFLAGS) $(OBJS) $(LIBS) -o $(LIBPREFIX)$(TARGET)$(SO)
+
+# target for pure Racket generation, no C files to be compiled
+# (used by some Examples/racket/*, common for using with existing libraries)
 racket_no_srcs:
 	$(SWIG) -racket $(SWIGOPT) $(INTERFACEPATH)
 
@@ -909,7 +919,7 @@ racket_version:
 # -----------------------------------------------------------------
 
 racket_clean:
-	rm -f *_wrap* *~ .~* $(TARGET).rkt
+	rm -f *_wrap* *~ .~* $(TARGET).rkt $(LIBPREFIX)$(TARGET)$(SO)
 	rm -f core @EXTRA_CLEAN@
 	rm -f *.@OBJEXT@
 
