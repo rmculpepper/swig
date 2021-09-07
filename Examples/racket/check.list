@@ -1,6 +1,7 @@
 # see top-level Makefile.in
 constants
 funcptr
+intro
 multimap
 pointer
 simple
