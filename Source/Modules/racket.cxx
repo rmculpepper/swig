@@ -271,13 +271,19 @@ int RACKET::functionWrapper(Node *n) {
 }
 
 int RACKET::constantWrapper(Node *n) {
-  String *type = Getattr(n, "type");
-  String *converted_value = convert_literal(Getattr(n, "value"), type);
   String *name = Getattr(n, "sym:name");
+  String *cname = Getattr(n, "name");
+  String *type = Getattr(n, "type");
 
-  Printf(f_rktwrap, "(define %s %s)\n\n", name, converted_value);
+  if (SwigType_isfunctionpointer(type) && cname) {
+    // Result of %constant or %callback declaration, etc
+    Printf(f_rktwrap, "(define-foreign %s _fpointer #:c-id %s)\n\n", name, cname);
+  } else {
+    String *converted_value = convert_literal(Getattr(n, "value"), type);
+    Printf(f_rktwrap, "(define %s %s)\n\n", name, converted_value);
+    Delete(converted_value);
+  }
   Append(entries, name);
-  Delete(converted_value);
 
   return SWIG_OK;
 }
