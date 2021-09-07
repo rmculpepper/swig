@@ -21,7 +21,7 @@ where <code><em>module</em></code> is the module name declared in the interface
 file (or overridden by the <code>-module <em>module</em></code> command line
 option).</p>
 
-<p>The interface module must insert into the “rktheader” section a definition
+<p>The interface module must insert into the "rktheader" section a definition
 of <code>foreign-lib</code> and <code>define-foreign</code>,
 where <code>foreign-lib</code> is a variable whose value is the FFI library
 reference and <code>define-foreign</code> is a definition form compatible with
@@ -39,7 +39,7 @@ those produced by <code>define-ffi-definer</code>. For example:</p>
 
 <h3 id="type-declarations">Type declarations</h3>
 
-<p>The translations of type declarations are discussed in the “Types” section.</p>
+<p>The translations of type declarations are discussed in the "Types" section.</p>
 
 <h3 id="constant-definitions">Constant definitions</h3>
 
@@ -62,6 +62,20 @@ calls a fictitious <code>FIXME</code> Racket function. For example:</p>
 (define FIFTY (FIXME #| 4*(1+0xA) +6 |#))
 </pre></div>
 
+<p>If a <code>%constant</code> declaration is used with a function or function
+pointer type, then the specific function type is ignored and the name is bound
+to a <code>_fpointer</code> value. A <code>%callback</code> declaration is
+handled similarly, but it also produces a normal function wrapper. For
+example:</p>
+
+<div class="code"><pre>
+%constant int add(int, int);
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-foreign add _fpointer)
+</pre></div>
+
 <h3 id="variable-declarations">Variable declarations</h3>
 
 <p>A variable is translated to a procedure similar to the result
@@ -72,7 +86,7 @@ the <code>%immutable</code> directive), calling the procedure to set the
 variable’s value raises an error.</p>
 
 <p>A variable wrapper can also be customized by the <code>%rename</code>
-directive and the “var-options” feature, which can contain
+directive and the "var-options" feature, which can contain
 either <code>#:fail</code> or <code>#:make-fail</code> keyword arguments,
 similar to those supported by the result of <code>define-ffi-definer</code>. For
 example:</p>
@@ -101,7 +115,7 @@ translation produces a clause of the following shape for each parameter:</p>
 <em>ffitype</em>                // if the parameter name is not given
 </pre></div>
 
-<p>The translation of parameters to clauses can be overridden with the “rktin”
+<p>The translation of parameters to clauses can be overridden with the "rktin"
 typemap, which also allows multi-parameter mappings. The mapping must produce as
 many argument clauses as there are parameters in the C declaration. For example,
 here is a multi-parameter typemap that converts a single Racket argument (a
@@ -115,8 +129,8 @@ list) to a pair of length and array arguments to the foreign function:</p>
 </pre></div>
 
 <p>A function wrapper can also be customized by the <code>%rename</code>
-directive, the “fun-prefix” feature, the “fun-result” feature, and the
-“fun-options” feature. The following is the general template of a function
+directive, the "fun-prefix" feature, the "fun-result" feature, and the
+"fun-options" feature. The following is the general template of a function
 wrapper:</p>
 
 <div class="targetlang"><pre>
@@ -133,12 +147,12 @@ wrapper:</p>
 
 <li>The <code><em>result-expr</em></code> is determined as follows:
 <ul>
-  <li>If there is a “fun-result” declaration, its value is used.</li>
+  <li>If there is a "fun-result" declaration, its value is used.</li>
 
-  <li>Otherwise, if there are any “rktargout” mappings,
+  <li>Otherwise, if there are any "rktargout" mappings,
   then <code><em>result-expr</em></code> is <code>(values
   result <em>argout-expr</em> ...)</code>, where
-  each <code><em>argout-expr</em></code> comes from a “rktargout” mapping, in
+  each <code><em>argout-expr</em></code> comes from a "rktargout" mapping, in
   the order that the arguments appear. As a special case,
   if <code><em>result-type</em></code> is <code>_void</code>,
   then <code>result</code> is dropped from the result values.</li>
@@ -156,7 +170,7 @@ wrapper:</p>
 
 <h2 id="types">Types</h2>
 
-<p>The translation of C types to Racket FFI type descriptors uses the “rktffi”
+<p>The translation of C types to Racket FFI type descriptors uses the "rktffi"
 typemap method, which maps a C type to a Racket expression that evaluates to an
 FFI type descriptor (satisfying the <code>ctype?</code> predicate).</p>
 
@@ -232,9 +246,9 @@ fictitious <code>_FIXME</code> function.</p>
 </pre></div>
 
 <p>The default FFI type for <code>double</code> accepts only Racket
-floating-point numbers. To automatically coerce other number (such as exact
-integers and rationals) to floating point, use <code>_double*</code> instead by
-using the following declaration:</p>
+floating-point numbers. To automatically accept and coerce other numbers (such
+as exact integers and rationals), use <code>_double*</code> instead by using the
+following declaration:</p>
 
 <div class="code"><pre>
 // Include in your interface module:
@@ -277,8 +291,21 @@ which has the value <code>'point_st</code>). See the Racket FFI documentation
 for details.</p>
 
 <p>The translator records known struct names; this information is used by the
-translation of pointer types (see the “Pointer types” section), and it is
-propagated by typedefs (see the “Typedefs” section).</p>
+translation of pointer types (see the "Pointer types" section), and it is
+propagated by typedefs (see the "Typedefs" section).</p>
+
+<p>An incomplete struct declaration produces a definition of the struct type in
+terms of the fictitious <code>_FIXME</code> function and also a definition of
+the struct's pointer type. For example:</p>
+
+<div class="code"><pre>
+struct point_st;
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _point_st (_FIXME #| incomplete type |#))
+(define _point_st-pointer/null (_cpointer/null 'point_st))
+</pre></div>
 
 <h3 id="typedefs">Typedefs</h3>
 
@@ -288,21 +315,33 @@ struct type or not.</p>
 <p>A typedef to a known struct type is handled as follows:</p>
 
 <div class="code"><pre>
-typedef struct point_st Point;
+typedef struct point_st Point;  // where struct point_st is already declared
 </pre></div>
 <div class="indent"><pre>=&gt;</pre></div>
 <div class="targetlang"><pre>
-(define _Point              _point_st)
-(define _Point-pointer      _point_st-pointer)
-(define _Point-pointer/null _pointer_st-pointer/null)
+(define _Point  _point_st)
+(define _Point* _point_st-pointer/null)
 </pre></div>
 
-<p>In addition, the typedef name is recorded as a known struct type.</p>
+<p>If the typedef occurs before the declaration of the struct type, the code
+above would attempt to use the <code>_point_st</code>
+and <code>_point_st-pointer/null</code> variables before their definitions. So
+instead, the following code is produced:</p>
 
-<p>If the typedef occurs strictly before the declaration of the struct type, the
-resulting Racket module will contain variable references before their
-definitions. This can be fixed manually by moving the struct-generated
-definition before the typedef-generated definitions.</p>
+<div class="code"><pre>
+typedef struct point_st Point;  // where struct point_st is not yet declared
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _Point  (_FIXME #| _point_st |#))
+(define _Point* (_cpointer/null 'point_st) #| _point_st-pointer/null |#)
+</pre></div>
+
+<p>This can be fixed by inserting a definition of <code>_FIXME</code> into the
+"rktheader" section, or it can be fixed manually by moving the struct-generated
+definition before the typedef-generated definitions and uncommenting the struct
+type names. If <code>_Point</code> is not used, this code could also be fixed by
+commenting out or removing its definition.</p>
 
 <p>A typedef to an anonymous struct declaration is handled as if the typedef
 name replaced the struct name:</p>
@@ -314,6 +353,9 @@ typedef struct { int x, y, z; } Point3d;
 <div class="targetlang"><pre>
 (define-cstruct _Point3d ([x _int] [y _int] [z _int]))
 </pre></div>
+
+<p>In all of the previous cases, the typedef name is recorded as a known struct
+type.</p>
 
 <p>If the target of a typedef is not a known struct type, then the translation
 does not include pointer types:</p>
@@ -365,7 +407,7 @@ type), then the associated nullable pointer type is produced.</p>
 
 <div class="code"><pre>
 struct point_st *   =&gt;  _point_st-pointer/null
-Point *             =&gt;  _Point-pointer/null
+Point *             =&gt;  _Point*
 </pre></div>
 
 <p>If the target type is a function type, then the translation of the function
@@ -393,16 +435,17 @@ methods for achieving the same goals.</p>
 <h3 id="default-arguments-5.4.8-13.5">Default arguments (5.4.8, 13.5)</h3>
 
 <p>Default arguments are not directly supported. That is, the following
-declaration syntax is not supported:</p>
+declaration is processed as if the default value were omitted; the resulting
+wrapper takes two required arguments:</p>
 
 <div class="code"><pre>
 int plot(double x, double y, int color=WHITE);  // NOT SUPPORTED
 </pre></div>
 
-<p>Also, the “default” typemap method is not supported. (See the “Common typemap
-method” section below.)</p>
+<p>Also, the "default" typemap method is not supported. (See the "Common typemap
+method" section below.)</p>
 
-<p>To create a wrapper with default arguments, use the “fun-prefix” feature to
+<p>To create a wrapper with default arguments, use the "fun-prefix" feature to
 specify the formal parameter list (ending in <code>::</code>) for
 the <code>_fun</code> syntax:</p>
 
@@ -473,9 +516,9 @@ at module top-level (that is, not within a function)</li>
 
 <h3 id="input-output-and-inputoutput-parameters-12.1.2-12.1.3-12.1.4">Input, output, and input/output parameters (12.1.2, 12.1.3, 12.1.4)</h3>
 
-<p>For a function with out (or inout) parameters, an idiomatic wrapper would use
-the special <code>_ptr</code> function parameter syntax (not an FFI type), as
-follows:</p>
+<p>For a function with output (or input/output) parameters, an idiomatic wrapper
+would use the special <code>_ptr</code> function parameter syntax (not an FFI
+type), as follows:</p>
 
 <div class="code"><pre>
 void f(int *outparam);
@@ -488,7 +531,7 @@ void f(int *outparam);
         -&gt; outparam))
 </pre></div>
 
-<p>But by default, the translator produces the following Racket wrapper:</p>
+<p>But by default, the declaration above produces the following Racket wrapper:</p>
 
 <div class="targetlang"><pre>
 (define-foreign f
@@ -496,7 +539,7 @@ void f(int *outparam);
         -&gt; _void))
 </pre></div>
 
-<p>The argument can be treated as an out-parameter by using the “rktin” typemap
+<p>The argument can be treated as an out-parameter by using the "rktin" typemap
 to override the default parameter clause to use the <code>(_ptr o ___)</code>
 argument syntax:</p>
 
@@ -506,21 +549,20 @@ argument syntax:</p>
 %}
 </pre></div>
 
-<p>And the result of the wrapper can be set using the “fun-result” feature:</p>
+<p>And the post-call value should be added to the result by using the
+"rktargout" typemap. Normally, this would cause the wrapper to return multiple
+values, but as a special case, when the result type is <code>_void</code>, any
+"rktargout" mapping causes the void result to be dropped.</p>
+
+<div class="code"><pre>
+%typemap(&quot;rktargout&quot;) int *outparam &quot;$1_name&quot;;
+</pre></div>
+
+<p>As an alternative, the entire wrapper result can be overridden using the
+"fun-result" feature:</p>
 
 <div class="code"><pre>
 %feature(&quot;fun-result&quot;) f &quot;outparam&quot;;
-</pre></div>
-
-<p>As an alternative, the argument can be automatically added to the function
-result values by using the “argout” typemap. In this example, that would
-cause <code>f</code> to return two values, the first of which is
-always <code>(void)</code>, so it makes more sense to use the “fun-result”
-feature to replace the result expression entirely.</p>
-
-<div class="code"><pre>
-%typemap(&quot;rktargout&quot;) int *outparam &quot;outparam&quot;;
-// %typemap(&quot;rktargout&quot;) int *outparam &quot;$1_name&quot;;  // alternative
 </pre></div>
 
 <p>Parameters that are used for both input and output should use the <code>(_ptr
@@ -537,29 +579,24 @@ types.</p>
 
 <h3 id="common-typemap-methods-13.5">Common typemap methods (13.5)</h3>
 
-<p>The common typemap methods (“in”, “out”, etc) are not supported.</p>
+<p>The common typemap methods ("in", "out", etc) are not supported.</p>
 
-<p>The common “in” method has two Racket analogues:</p>
+<p>The "in" method has the Racket analogue "rktin", which maps parameters
+to <code>_fun</code> parameter clauses. If a parameter has no "rktin" mapping,
+then the default type translation rules are used, based on the "rktffi" typemap
+method.</p>
 
-<ul>
-
-<li>“rktin” maps parameters to <code>_fun</code> parameter clauses</li>
-
-<li>“rktffi” maps parameter types to Racket FFI types (for parameters where
-“rktin” did not match)</li>
-
-</ul>
-
-<p>The common “argout” method has the Racket analogue “rktargout”. It maps
+<p>The "argout" method has the Racket analogue "rktargout", which maps
 parameters to Racket expressions to be included in the result values.</p>
 
-<p>The common “out” method has the Racket analogue “rktffi”.</p>
+<p>The "out" method has no Racket analogue. The result type is translated using
+the default type translation rules, based on the "rktffi" typemap method.</p>
 
-<p>The “default” typemap has no direct Racket analogue. See the “Default
-arguments” section above.</p>
+<p>The "default" typemap has no direct Racket analogue. See the "Default
+arguments" section above.</p>
 
-<p>The “check” method has no direct Racket analogue. Use a custom FFI type
-(see <code>make-ctype</code>), use a wrapper (use the “fun-options” feature to
+<p>The "check" method has no direct Racket analogue. Use a custom FFI type
+(see <code>make-ctype</code>), use a wrapper (use the "fun-options" feature to
 give a <code>#:wrap</code> argument to <code>_fun</code>), or perform the check
 at a higher level before calling the wrapper function. Here is an example using
 a custom FFI type:</p>
@@ -585,17 +622,17 @@ int isqrt(int positive);
 </pre></div>
 
 <p>To reject NULL pointers in arguments, where the target type is a structure
-type, change the “rktffi” mapping of the parameter to use
-the <code>_structname-pointer</code> type instead of the
-default <code>_structname-pointer/null</code> type.</p>
+type, change the "rktffi" mapping of the parameter to use
+the <code>_<em>structname</em>-pointer</code> type instead of
+the <code>_<em>structname</em>-pointer/null</code> type.</p>
 
-<p>The following typemap methods have no Racket analogue: “typecheck”,
-“arginit”, “freearg”, “newfree”, “ret”, “memberin”, “varin”, “varout”, and
-“throws”.</p>
+<p>The following typemap methods have no Racket analogue: "typecheck",
+"arginit", "freearg", "newfree", "ret", "memberin", "varin", "varout", and
+"throws".</p>
 
 <h3 id="multi-argument-typemaps-13.9">Multi-argument typemaps (13.9)</h3>
 
-<p>The “rktin” method supports multi-argument type mappings. The mapping must
+<p>The "rktin" method supports multi-argument type mappings. The mapping must
 produce as many argument clauses as there are parameters in the C
 declaration. For example, here is a multi-parameter typemap that converts a
 single Racket argument (a list) to a pair of length and array arguments to the
@@ -611,7 +648,7 @@ foreign function:</p>
 <h3 id="object-ownership-newobject-delobject-14.2">Object ownership, <code>%newobject</code>, <code>%delobject</code> (14.2)</h3>
 
 <p>The <code>%newobject</code> and <code>%delobject</code> directives are not
-supported. Use the “fun-options” feature and
+supported. Use the "fun-options" feature and
 Racket’s <code>ffi/unsafe/alloc</code> library instead. For example:</p>
 
 <div class="code"><pre>
@@ -625,7 +662,7 @@ the documentation for <code>ffi/unsafe/alloc</code> for more information.</p>
 
 <h3 id="contracts-contract-15">Contracts, <code>%contract</code> (15)</h3>
 
-<p>Contracts are not supported at the FFI wrapper level. FIXME</p>
+<p>Contracts are not supported at the FFI wrapper level.</p>
 
 <h3 id="arithmetic-expressions">Arithmetic expressions</h3>
 
@@ -652,7 +689,7 @@ expressions that must be fixed by hand.</p>
 
 <li>the run-time type checker (13.12)</li>
 
-<li>typemaps and overloading (13.13) (FIXME)</li>
+<li>typemaps and overloading (13.13)</li>
 
 <li><code>%exception</code> (14.1)</li>
 
