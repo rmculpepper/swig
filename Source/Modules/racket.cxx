@@ -75,13 +75,13 @@ public:
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
-  void add_known_type(String *ty, const char *kind);
-  int is_known_struct_type(String *ty);
+  void add_known_pointer_type(String *type, String *ptrtype);
+  String *get_known_pointer_type(String *type);
   void emit_forward_structs();
   void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
   String *stringOfUnion(Node *n, int indent);
   int extern_all_flag;
-  Hash *known_types;
+  Hash *known_pointer_types;  // maps _type -> _ptrtype, eg _point_st -> _point_st-pointer/null
   Hash *used_structs;
   Hash *defined_structs;
   struct member_ctx *mctx;
@@ -106,7 +106,7 @@ void RACKET::main(int argc, char *argv[]) {
   extern_all_flag = 0;
   emit_c_file = 0;
   emit_define_foreign = 0;
-  known_types = NewHash();
+  known_pointer_types = NewHash();
   used_structs = NewHash();
   defined_structs = NewHash();
   mctx = NULL;
@@ -127,13 +127,13 @@ void RACKET::main(int argc, char *argv[]) {
   }
 }
 
-void RACKET::add_known_type(String *type, const char *kind) {
-  // Printf(stderr, "Adding known type: %s :: %s\n", type, kind);
-  Setattr(known_types, type, kind);
+void RACKET::add_known_pointer_type(String *type, String *ptrtype) {
+  // Printf(stderr, "Adding known pointer type: %s ptr = %s\n", type, ptrtype);
+  Setattr(known_pointer_types, type, ptrtype);
 }
 
-int RACKET::is_known_struct_type(String *ffitype) {
-  return checkAttribute(known_types, ffitype, "struct");
+String *RACKET::get_known_pointer_type(String *type) {
+  return Getattr(known_pointer_types, type);
 }
 
 int RACKET::top(Node *n) {
@@ -325,46 +325,39 @@ int RACKET::variableWrapper(Node *n) {
 }
 
 int RACKET::typedefHandler(Node *n) {
-  /* A declaration like "typedef struct foo_st { ... } FOO;" generates two things:
-   * (1) a struct/class declaration for FOO (not foo_st!)
-   *     More precisely: name="foo_st", sym:name="FOO", tdname="FOO".
-   * (2) a typedef declaration for FOO
-   *     More precisely: name="FOO", type="struct foo_st"
-   * The struct/class decl is processed first, so we omit the typedef if the
-   * given type name is already known.
-   */
   String *tdtype = NewStringf("_%s", Getattr(n, "name"));
-  if (!Getattr(known_types, tdtype)) {
+  String *ptrtype;
+
+  if (get_known_pointer_type(tdtype)) {
+    // That means tdtype is already declared as a struct; this happens for
+    //   typedef struct point_st Point;
+    // So just skip the typedef.
+    ;
+  } else {
     SwigType *ty = Getattr(n, "type");
     String *ffitype = get_ffi_type(n, ty);
 
-    if (is_known_struct_type(ffitype)) {
+    if ((ptrtype = get_known_pointer_type(ffitype))) {
+      // Struct type or typedef, already declared
       Printf(f_rktwrap, "(define %s %s)\n", tdtype, ffitype);
-      Printf(f_rktwrap, "(define %s-pointer %s-pointer)\n", tdtype, ffitype);
-      Printf(f_rktwrap, "(define %s-pointer/null %s-pointer/null)\n", tdtype, ffitype);
+      Printf(f_rktwrap, "(define %s* %s)\n", tdtype, ptrtype);
       Printf(f_rktwrap, "\n");
-      add_known_type(tdtype, "struct");
+      add_known_pointer_type(tdtype, NewStringf("%s*", tdtype));
     } else if (SwigType_issimple(ty) && !Strncmp(ty, "struct ", strlen("struct "))) {
+      // Struct type, but not yet declared
       String *name = NewString(Char(ty) + strlen("struct "));
+      Setattr(used_structs, name, "1");
       if (1) {
-        // If the struct is not declared (by C), definitions of ffitype etc are
-        // inserted *before* this definition, which is okay.  If the struct is
-        // declared later, this causes a use-before-def of ffitype etc, which
-        // could be fixed by reordering the definitions.
-        Printf(f_rktwrap, "(define %s %s)\n", tdtype, ffitype);
-        Printf(f_rktwrap, "(define %s-pointer %s-pointer)\n", tdtype, ffitype);
-        Printf(f_rktwrap, "(define %s-pointer/null %s-pointer/null)\n", tdtype, ffitype);
-        Setattr(used_structs, name, "1");
+        Printf(f_rktwrap, "(define %s (_FIXME #| %s |#))\n", tdtype, ffitype);
       } else {
-        Printf(f_rktwrap, "(define %s (begin _void #| incomplete type |#))\n", tdtype);
-        Printf(f_rktwrap, "(define %s-pointer (_cpointer '%s))\n", tdtype, name);
-        Printf(f_rktwrap, "(define %s-pointer/null (_cpointer/null '%s))\n", tdtype, name);
+        Printf(f_rktwrap, "(define %s %s)\n", tdtype, ffitype);
       }
-      Printf(f_rktwrap, "\n");
-      add_known_type(tdtype, "struct");
+      Printf(f_rktwrap, "(define %s* (_cpointer/null '%s) #| _%s-pointer/null |#)\n\n",
+             tdtype, name, name);
+      add_known_pointer_type(tdtype, NewStringf("%s*", tdtype));
     } else {
+      // Not a struct type, unknown whether declared
       Printf(f_rktwrap, "(define %s %s)\n\n", tdtype, ffitype);
-      add_known_type(tdtype, "typedef");
     }
   }
   return Language::typedefHandler(n);
@@ -395,7 +388,6 @@ int RACKET::enumDeclaration(Node *n) {
   }
 
   Printf(f_rktwrap, ")))\n\n");
-  add_known_type(tyname, "enum");
   return SWIG_OK;
 }
 
@@ -422,8 +414,7 @@ void RACKET::emit_forward_structs() {
       }
       // Printf(stderr, "declaring forward struct: %s\n", iter.key);
       Printf(f_rkthead, "\n\n");
-      Printf(f_rkthead, "  (define _%s (begin _void #| incomplete type |#))\n", iter.key);
-      Printf(f_rkthead, "  (define _%s-pointer (_cpointer '%s))\n", iter.key, iter.key);
+      Printf(f_rkthead, "  (define _%s (_FIXME #| incomplete type |#))\n", iter.key);
       Printf(f_rkthead, "  (define _%s-pointer/null (_cpointer/null '%s))", iter.key, iter.key);
     }
   }
@@ -485,7 +476,7 @@ int RACKET::classDeclaration(Node *n) {
                           tyname, Getattr(n, "name"));
     Printf(f_rktwrap, ")\n\n");
 
-    add_known_type(tyname, "struct");
+    add_known_pointer_type(tyname, NewStringf("%s-pointer/null", tyname));
     return SWIG_OK;
   }
   else if (!Strcmp(kind, "union")) {
@@ -518,7 +509,6 @@ int RACKET::classDeclaration(Node *n) {
     }
     Printf(f_rktwrap, "))\n\n");
 
-    add_known_type(tyname, "union");
     return SWIG_OK;
   }
   else {
@@ -646,14 +636,15 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
   }
   else if (SwigType_ispointer(ty)) {
     String *inner;
+    String *innerptrtype;
     SwigType_del_pointer(ty);
     if (SwigType_isconst(ty)) {
       SwigType_del_qualifier(ty);
     }
 
     if ((inner = get_mapped_type(n, ty))) {
-      if (inner && is_known_struct_type(inner)) {
-        result = NewStringf("%s-pointer/null", inner);
+      if (inner && (innerptrtype = get_known_pointer_type(inner))) {
+        result = Copy(innerptrtype);
       } else {
         result = NewStringf("(_pointer-to %s)", inner);
       }
@@ -663,8 +654,8 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     }
     else {
       String *inner = get_ffi_type(n, ty);
-      if (is_known_struct_type(inner)) {
-        result = NewStringf("%s-pointer/null", inner);
+      if ((innerptrtype = get_known_pointer_type(inner))) {
+        result = Copy(innerptrtype);
       } else {
         result = NewStringf("(_pointer-to %s)", inner);
       }
