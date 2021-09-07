@@ -74,7 +74,7 @@ extern int undef_fun(int v);
 extern int add_alpha_chars(char *s, int len);
 
 // ----------------------------------------
-// Type declarations
+// Structs
 
 %insert("rktheader") %{
 (require racket/struct ffi/unsafe/alloc)
@@ -109,7 +109,7 @@ typedef struct point_st Point;
 
 extern Point *flip_point(Point *p);
 
-// ???
+// Test for automatic deallocation.
 
 extern int point_counter;
 
@@ -120,11 +120,10 @@ extern void delete_point(Point *p);
 extern Point *new_point();
 
 // ----------------------------------------
-// Pointer types
+// Pointers
 
 // No typemap; treat as pointer.
 extern void mul_intp(int *p, int factor);
-
 
 // ----------------------------------------
 // Enumerations
@@ -133,6 +132,7 @@ enum direction_t { north, east, south, west, up = 100 };
 
 extern enum direction_t next_direction_cw(enum direction_t d);
 
+// ----------------------------------------
 // Unions
 
 %feature("struct-options") thing_t %{

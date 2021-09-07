@@ -62,7 +62,7 @@
   (check-equal? (saved-errno) (lookup-errno 'EINVAL)))
 
 ;; ----------------------------------------
-;; Struct types
+;; Structs
 
 (define p0 (make-point_st 0 0))
 (define p1 (make-point_st 3 4))
@@ -80,11 +80,20 @@
 (check-equal? p2 (make-point_st 10 -10))
 
 (let ()
+  ;; Create 100 points
   (define ps (for/list ([i 100]) (new_point)))
-  (check-equal? (point_counter) (length ps))
+  (check-equal? (point_counter) 100)
+  ;; Manually deallocate 10 of them (but keep dangling wrappers!)
+  (for ([i 10] [p ps]) (delete_point p))
+  (check-equal? (point_counter) 90)
+  ;; Allow all of the wrappers to be GC'd
   (void/reference-sink ps) ;; after this, ps var is dead and list can be GC'd
   (collect-garbage)
+  ;; Check that all have been collected (and not deleted twice)
   (check-equal? (point_counter) 0))
+
+;; ----------------------------------------
+;; Pointers
 
 (let ()
   (define p (make-point_st 1 2)) ;; acts like instance or pointer, depending on use
@@ -116,7 +125,9 @@
 (define t2 (make-thing_t 'direction (make-union _thing_inner_t 1 'north)))
 (let ([s1 (format "~v" t1)])
   (convert_thing t1)
-  (printf "~a => ~v\n" s1 t1))
+  #;(printf "~a => ~v\n" s1 t1)
+  (check-equal? (format "~v" t1) "(thing 'direction 'east)"))
 (let ([s2 (format "~v" t2)])
   (convert_thing t2)
-  (printf "~a => ~v\n" s2 t2))
+  #;(printf "~a => ~v\n" s2 t2)
+  (check-equal? (format "~v" t2) "(thing 'point (Point 0 1))"))
