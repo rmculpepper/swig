@@ -139,7 +139,9 @@ wrapper:</p>
   then <code><em>result-expr</em></code> is <code>(values
   result <em>argout-expr</em> ...)</code>, where
   each <code><em>argout-expr</em></code> comes from a “rktargout” mapping, in
-  the order that the arguments appear.</li>
+  the order that the arguments appear. As a special case,
+  if <code><em>result-type</em></code> is <code>_void</code>,
+  then <code>result</code> is dropped from the result values.</li>
 
   <li>Otherwise, there is no <code><em>result-expr</em></code>. In that case,
   the <code>-&gt; <em>result-expr</em></code> line is omitted, and the <code>[result :
@@ -154,16 +156,13 @@ wrapper:</p>
 
 <h2 id="types">Types</h2>
 
-<p>The translation of C types to Racket FFI type descriptors is done by the
-non-standard “rktffi” typemap, but types that have no mapping are handled
-specially by the translator. The special handling cannot be scripted by
-interface modules.</p>
+<p>The translation of C types to Racket FFI type descriptors uses the “rktffi”
+typemap method, which maps a C type to a Racket expression that evaluates to an
+FFI type descriptor (satisfying the <code>ctype?</code> predicate).</p>
 
-<p>Racket’s “rktffi” typemap maps a C type to a Racket expression that evaluates
-to an FFI type descriptor (satisfying the <code>ctype?</code> predicate).</p>
-
-<p>If the translator cannot translate a type, it emits an expression
-that calls a fictitious <code>_FIXME</code> function.</p>
+<p>Types that have no mapping are handled specially by the translator. If the
+translator cannot translate a type, it emits an expression that calls a
+fictitious <code>_FIXME</code> function.</p>
 
 <h3 id="builtin-typemap">Builtin typemap</h3>
 
@@ -387,7 +386,9 @@ does not respect mutation restrictions based on <code>const</code>.</p>
 
 <h2 id="supported-and-unsupported-swig-features">Supported and unsupported Swig features</h2>
 
-<p>Some of these are unsupported because they are unneeded.</p>
+<p>This section lists various Swig features and indicates whether the Swig
+module for Racket supports them, and if not, whether it provides alternative
+methods for achieving the same goals.</p>
 
 <h3 id="default-arguments-5.4.8-13.5">Default arguments (5.4.8, 13.5)</h3>
 
@@ -422,19 +423,27 @@ int plot (double x, double y, int color);
 <h3 id="constant-functions-callback-nocallback-5.4.9"><code>%constant</code>
 functions, <code>%callback</code>, <code>%nocallback</code> (5.4.9)</h3>
 
+<p>The Racket FFI is able to convert between C function pointers and Racket
+procedures, so Swig's callback support is not usually necessary. On the other
+hand, a C function converted into a Racket procedure and then back into a C
+function has overhead on every call, and in some cases it requires cooperation
+with the GC to avoid premature collection. So it can be convenient to have a
+reference to the C function as a simple <code>_fpointer</code>. (The types of
+functions accepting the callbacks should also be overridden to
+be <code>_fpointer</code>.)</p>
+
 <div class="code"><pre>
-%constant int add(int, int);
+%callback("%s_cb");
+int add(int, int);
+%nocallback;
+%constant int sub(int, int);
 </pre></div>
-
-<p>In many cases, you can just use the ordinary binding of <code>add</code>. FIXME: example</p>
-
-<h3 id="extend-5.5.6"><code>%extend</code> (5.5.6)</h3>
-
-<p>???</p>
-
-<h3 id="nested-structures-5.5.7">Nested structures (5.5.7)</h3>
-
-<p>supported?</p>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-foreign add_cb _fpointer #:c-id add)
+(define-foreign add (_fun _int _int -> _int))
+(define-foreign sub _fpointer #:c-id sub)
+</pre></div>
 
 <h3 id="code-insertion-5.6">Code insertion (5.6)</h3>
 
@@ -518,8 +527,6 @@ feature to replace the result expression entirely.</p>
 io _)</code> function parameter syntax instead. Likewise, parameters that are
 only used for input should use the <code>(_ptr i _)</code> function syntax.</p>
 
-<p>FIXME: “typemap.i” but only works for primitive types??</p>
-
 <h3 id="typemap-special-variables-13.4.3">Typemap special variables (13.4.3)</h3>
 
 <p>The special variables are handled by Swig, so they are supported.</p>
@@ -538,7 +545,8 @@ types.</p>
 
 <li>“rktin” maps parameters to <code>_fun</code> parameter clauses</li>
 
-<li>“rktffi” maps parameter types to Racket FFI types (for parameters where “rktin” did not match)</li>
+<li>“rktffi” maps parameter types to Racket FFI types (for parameters where
+“rktin” did not match)</li>
 
 </ul>
 
@@ -553,7 +561,8 @@ arguments” section above.</p>
 <p>The “check” method has no direct Racket analogue. Use a custom FFI type
 (see <code>make-ctype</code>), use a wrapper (use the “fun-options” feature to
 give a <code>#:wrap</code> argument to <code>_fun</code>), or perform the check
-at a higher level before calling the wrapper function. (FIXME: example)</p>
+at a higher level before calling the wrapper function. Here is an example using
+a custom FFI type:</p>
 
 <div class="code"><pre>
 %insert(&quot;rktheader&quot;) %{
@@ -565,7 +574,11 @@ at a higher level before calling the wrapper function. (FIXME: example)</p>
 int isqrt(int positive);
 </pre></div>
 <div class="indent"><pre>=&gt;</pre></div>
-<div class="code"><pre>
+<div class="targetlang"><pre>
+(define _pos-int
+  (make-ctype _int
+              (lambda (v) (if (&gt; v 0) v (error &#39;_pos-int &quot;not positive: ~e&quot; v)))))
+...
 (define-foreign bar
   (_fun [positive : _pos-int]
         -&gt; _int))
@@ -624,6 +637,10 @@ expressions that must be fixed by hand.</p>
 <h3 id="other-unsupported-features">Other unsupported features</h3>
 
 <ul>
+
+<li><code>%extend</code> (5.5.6)</li>
+
+<li>nested structures (5.5.7)</li>
 
 <li>C++ (6, 7, 8, 9)</li>
 
