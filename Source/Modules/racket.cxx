@@ -65,6 +65,7 @@ public:
   virtual int classDeclaration(Node *n);
   virtual int classforwardDeclaration(Node *n);
   virtual int enumDeclaration(Node *n);
+  virtual int enumforwardDeclaration(Node *n);
   virtual int typedefHandler(Node *n);
   virtual int membervariableHandler(Node *);
   virtual int memberconstantHandler(Node *);
@@ -77,7 +78,7 @@ private:
   String *get_mapped_type(Node *n, SwigType *ty);
   void add_known_pointer_type(String *type, String *ptrtype);
   String *get_known_pointer_type(String *type);
-  void emit_forward_structs();
+  void emit_forward_types();
   void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
   String *stringOfUnion(Node *n, int indent);
   int extern_all_flag;
@@ -85,6 +86,8 @@ private:
   Hash *known_pointer_types;  // maps _type -> _ptrtype, eg _point_st -> _point_st-pointer/null
   Hash *used_structs;
   Hash *defined_structs;
+  Hash *used_enums;
+  Hash *defined_enums;
   struct member_ctx *mctx;
 };
 
@@ -111,6 +114,8 @@ void RACKET::main(int argc, char *argv[]) {
   known_pointer_types = NewHash();
   used_structs = NewHash();
   defined_structs = NewHash();
+  used_enums = NewHash();
+  defined_enums = NewHash();
   mctx = NULL;
 
   for (i = 1; i < argc; i++) {
@@ -199,7 +204,7 @@ int RACKET::top(Node *n) {
     Printf(f_rkthead, "(define-ffi-definer define-foreign foreign-lib)\n\n");
   }
 
-  emit_forward_structs();
+  emit_forward_types();
 
   if (1) {
     Dump(f_rktbegin, f_rkt);  Delete(f_rktbegin); f_rktbegin = NULL;
@@ -370,6 +375,7 @@ int RACKET::enumDeclaration(Node *n) {
     return SWIG_NOWRAP;
 
   String *tyname = NewStringf("_%s", Getattr(n, "sym:name"));
+  Setattr(defined_enums, Getattr(n, "name"), "1");
 
   Printf(f_rktwrap, "(define %s\n", tyname);
   Printf(f_rktwrap, "  (_enum '(");
@@ -404,17 +410,25 @@ int RACKET::classforwardDeclaration(Node *n) {
   return SWIG_OK;
 }
 
-void RACKET::emit_forward_structs() {
+int RACKET::enumforwardDeclaration(Node *n) {
+  String *name = Getattr(n, "sym:name");
+  // Printf(stderr, "forward declaration of %s :: enum\n", name);
+  Setattr(used_enums, name, "1");
+  return SWIG_OK;
+}
+
+void RACKET::emit_forward_types() {
   Iterator iter;
   int first = 1;
+
+  String *moddecl = NewString("");
+  Printf(moddecl, "(module forward-types racket/base\n");
+  Printf(moddecl, "  (require ffi/unsafe)\n");
+  Printf(moddecl, "  (provide (protect-out (all-defined-out)))");
+
   for (iter = First(used_structs); iter.item; iter = Next(iter)) {
     if (!Getattr(defined_structs, iter.key)) {
-      if (first) {
-        first = 0;
-        Printf(f_rkthead, "(module forward-struct-types racket/base\n");
-        Printf(f_rkthead, "  (require ffi/unsafe)\n");
-        Printf(f_rkthead, "  (provide (protect-out (all-defined-out)))");
-      }
+      if (first) { first = 0; Printf(f_rkthead, "%s", moddecl); }
       // Printf(stderr, "declaring forward struct: %s\n", iter.key);
       Printf(f_rkthead, "\n\n");
       Printf(f_rkthead, "  (define _%s (_FIXME #| incomplete type |#))\n", iter.key);
@@ -422,9 +436,18 @@ void RACKET::emit_forward_structs() {
       Printf(f_rkthead, "  (define _%s-pointer/null (_cpointer/null '%s))", iter.key, iter.key);
     }
   }
-  if (!first) {
-    Printf(f_rkthead, ")\n(require (submod \".\" forward-struct-types))\n\n");
+  for (iter = First(used_enums); iter.item; iter = Next(iter)) {
+    if (!Getattr(defined_enums, iter.key)) {
+      if (first) { first = 0; Printf(f_rkthead, "%s", moddecl); }
+      // Printf(stderr, "declaring forward enum: %s\n", iter.key);
+      Printf(f_rkthead, "\n\n");
+      Printf(f_rkthead, "  (define _%s _int #| incomplete enum |#)", iter.key);
+    }
   }
+  if (!first) {
+    Printf(f_rkthead, ")\n(require (submod \".\" forward-types))\n\n");
+  }
+  Delete(moddecl);
 }
 
 // Includes structs
@@ -680,6 +703,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
       offset = strlen("union ");
     } else if (!Strncmp(str, "enum ", strlen("enum "))) {
       offset = strlen("enum ");
+      Setattr(used_enums, NewString(Char(str) + offset), "1");
     } else {
       offset = 0;
     }
