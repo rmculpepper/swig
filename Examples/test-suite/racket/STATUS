@@ -1,0 +1,59 @@
+arrays -- ok
+bom_utf8 -- trivial
+c_delete -- trivial
+c_delete_function -- trivial
+char_constant -- ok
+const_const -- trivial
+constant_expr -- FAIL
+default_args_c -- FAIL, static funs not exported!
+empty_c -- trivial
+enums -- ??? missing ???
+enum_forward -- FAIL, forward ref?
+enum_macro -- FIXME: missing constants w/in enum
+enum_missing -- FAIL
+extern_declaration -- ???
+funcptr -- ok
+function_typedef -- FIXME
+global_functions -- ok
+global_immutable_vars -- ok
+immutable_values -- ok
+inctest -- FAIL ???
+infinity -- ok
+integers -- ?? missing ??
+keyword_rename_c -- ok ??
+lextype  --- N/A, uses "in" typemap
+li_carrays -- FAIL, ???
+li_cdata -- FAIL, ???
+li_cmalloc -- FAIL
+li_constraints -- no
+li_cpointer -- no
+li_math -- FAIL, set foreign-lib = #f
+long_long -- FIXME, <num>L, etc
+memberin_extend_c -- no
+name -- ok
+nested -- FAIL, nested (out of order)
+nested_extend_c -- no
+nested_structs -- no
+newobject2 -- ???
+not_c_keywords -- trivial
+overload_extend_c -- no
+overload_extend2 -- no
+preproc -- FAIL
+preproc_constants_c -- ??? missing ???
+preproc_defined -- ok
+preproc_gcc_output -- ok
+preproc_include -- ok
+preproc_line_file -- ?? missing ??
+register_par -- FAIL
+ret_by_value -- ok
+simple_array -- ok ??
+sizeof_pointer -- FAIL, expr
+sneaky1 -- trivial
+string_simple -- ok, but not useful
+struct_rename -- FAIL
+struct_initialization -- ok
+typedef_classforward_same_name -- FAIL
+typedef_struct -- ok
+typemap_subst -- no, typemap(in)
+union_parameter -- ok
+unions -- FAIL, union nested in struct
