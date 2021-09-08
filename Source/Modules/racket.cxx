@@ -81,6 +81,7 @@ private:
   void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
   String *stringOfUnion(Node *n, int indent);
   int extern_all_flag;
+  Hash *known_other_types;
   Hash *known_pointer_types;  // maps _type -> _ptrtype, eg _point_st -> _point_st-pointer/null
   Hash *used_structs;
   Hash *defined_structs;
@@ -106,6 +107,7 @@ void RACKET::main(int argc, char *argv[]) {
   extern_all_flag = 0;
   emit_c_file = 0;
   emit_define_foreign = 0;
+  known_other_types = NewHash();
   known_pointer_types = NewHash();
   used_structs = NewHash();
   defined_structs = NewHash();
@@ -328,8 +330,8 @@ int RACKET::typedefHandler(Node *n) {
   String *tdtype = NewStringf("_%s", Getattr(n, "name"));
   String *ptrtype;
 
-  if (get_known_pointer_type(tdtype)) {
-    // That means tdtype is already declared as a struct; this happens for
+  if (get_known_pointer_type(tdtype) || Getattr(known_other_types, tdtype)) {
+    // That means tdtype is already declared as a struct/enum/union, eg
     //   typedef struct point_st Point;
     // So just skip the typedef.
     ;
@@ -388,6 +390,7 @@ int RACKET::enumDeclaration(Node *n) {
   }
 
   Printf(f_rktwrap, ")))\n\n");
+  Setattr(known_other_types, tyname, "1");
   return SWIG_OK;
 }
 
@@ -510,6 +513,7 @@ int RACKET::classDeclaration(Node *n) {
     }
     Printf(f_rktwrap, "))\n\n");
 
+    Setattr(known_other_types, tyname, "1");
     return SWIG_OK;
   }
   else {
