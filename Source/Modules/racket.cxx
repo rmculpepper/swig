@@ -375,7 +375,7 @@ int RACKET::enumDeclaration(Node *n) {
     return SWIG_NOWRAP;
 
   String *tyname = NewStringf("_%s", Getattr(n, "sym:name"));
-  Setattr(defined_enums, Getattr(n, "name"), "1");
+  Setattr(defined_enums, Getattr(n, "sym:name"), "1"); // FIXME: "name" ??
 
   Printf(f_rktwrap, "(define %s\n", tyname);
   Printf(f_rktwrap, "  (_enum '(");
