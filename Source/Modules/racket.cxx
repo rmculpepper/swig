@@ -39,6 +39,8 @@ struct member_ctx {
   struct member_ctx *prev;
 };
 
+enum declared_t { undeclared, forward_declared, declared };
+
 class RACKET:public Language {
 public:
   int emit_c_file;
@@ -76,14 +78,18 @@ public:
 private:
   String *get_ffi_type(Node *n, SwigType *ty);
   String *get_mapped_type(Node *n, SwigType *ty);
+  void set_known_type(String *type, const char *prefix, String *ffitype, String *ptrtype);
   void add_known_pointer_type(String *type, String *ptrtype);
   String *get_known_pointer_type(String *type);
+  enum declared_t get_type_declared(String *type, const char *prefix);
   void emit_forward_types();
   void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
   String *stringOfUnion(Node *n, int indent);
   int extern_all_flag;
-  Hash *known_other_types;
-  Hash *known_pointer_types;  // maps _type -> _ptrtype, eg _point_st -> _point_st-pointer/null
+
+  Hash *known_types;         // eg "struct point_st" -> "_point_st" or "_FWD-point_st"
+  Hash *known_pointer_types; // eg "_point_st" -> "_point_st-pointer/null"
+
   Hash *used_structs;
   Hash *defined_structs;
   Hash *used_enums;
@@ -110,7 +116,7 @@ void RACKET::main(int argc, char *argv[]) {
   extern_all_flag = 0;
   emit_c_file = 0;
   emit_define_foreign = 0;
-  known_other_types = NewHash();
+  known_types = NewHash();
   known_pointer_types = NewHash();
   used_structs = NewHash();
   defined_structs = NewHash();
@@ -132,6 +138,25 @@ void RACKET::main(int argc, char *argv[]) {
       Swig_mark_arg(i);
     }
   }
+}
+
+enum declared_t RACKET::get_type_declared(String *type, const char *prefix) {
+  if (prefix) { type = NewStringf("%s %s", prefix, type); }
+  String *result = Getattr(known_types, type);
+  if (prefix) { Delete(type); }
+  if (!result) {
+    return undeclared;
+  } else if (!Strncmp(result, "_FWD-", strlen("_FWD-"))) {
+    return forward_declared;
+  } else {
+    return declared;
+  }
+}
+
+void RACKET::set_known_type(String *type, const char *prefix, String *ffitype, String *ptrtype) {
+  if (prefix) { type = NewStringf("%s %s", prefix, type); }
+  Setattr(known_types, type, ffitype);
+  if (ptrtype) { add_known_pointer_type(ffitype, ptrtype); }
 }
 
 void RACKET::add_known_pointer_type(String *type, String *ptrtype) {
@@ -335,6 +360,8 @@ int RACKET::typedefHandler(Node *n) {
   String *tdtype = NewStringf("_%s", Getattr(n, "name"));
   String *ptrtype;
 
+  FIXME!!!
+
   if (get_known_pointer_type(tdtype) || Getattr(known_other_types, tdtype)) {
     // That means tdtype is already declared as a struct/enum/union, eg
     //   typedef struct point_st Point;
@@ -368,36 +395,6 @@ int RACKET::typedefHandler(Node *n) {
     }
   }
   return Language::typedefHandler(n);
-}
-
-int RACKET::enumDeclaration(Node *n) {
-  if (getCurrentClass() && (cplus_mode != PUBLIC))
-    return SWIG_NOWRAP;
-
-  String *tyname = NewStringf("_%s", Getattr(n, "sym:name"));
-  Setattr(defined_enums, Getattr(n, "sym:name"), "1"); // FIXME: "name" ??
-
-  Printf(f_rktwrap, "(define %s\n", tyname);
-  Printf(f_rktwrap, "  (_enum '(");
-
-  int first = 1;
-
-  for (Node *c = firstChild(n); c; c = nextSibling(c)) {
-    String *slot_name = Getattr(c, "name");
-    String *value = Getattr(c, "enumvalue");
-    if (!first) { Printf(f_rktwrap, " "); } else { first = 0; }
-    if (value && Strcmp(value, "")) {
-      Printf(f_rktwrap, "%s = %s", slot_name, value);
-    } else {
-      Printf(f_rktwrap, "%s", slot_name);
-    }
-    Append(entries, slot_name);
-    Delete(value);
-  }
-
-  Printf(f_rktwrap, ")))\n\n");
-  Setattr(known_other_types, tyname, "1");
-  return SWIG_OK;
 }
 
 int RACKET::classforwardDeclaration(Node *n) {
@@ -448,6 +445,36 @@ void RACKET::emit_forward_types() {
     Printf(f_rkthead, ")\n(require (submod \".\" forward-types))\n\n");
   }
   Delete(moddecl);
+}
+
+int RACKET::enumDeclaration(Node *n) {
+  if (getCurrentClass() && (cplus_mode != PUBLIC))
+    return SWIG_NOWRAP;
+
+  String *tyname = NewStringf("_%s", Getattr(n, "sym:name"));
+  Setattr(defined_enums, Getattr(n, "sym:name"), "1"); // FIXME: "name" ??
+
+  Printf(f_rktwrap, "(define %s\n", tyname);
+  Printf(f_rktwrap, "  (_enum '(");
+
+  int first = 1;
+
+  for (Node *c = firstChild(n); c; c = nextSibling(c)) {
+    String *slot_name = Getattr(c, "name");
+    String *value = Getattr(c, "enumvalue");
+    if (!first) { Printf(f_rktwrap, " "); } else { first = 0; }
+    if (value && Strcmp(value, "")) {
+      Printf(f_rktwrap, "%s = %s", slot_name, value);
+    } else {
+      Printf(f_rktwrap, "%s", slot_name);
+    }
+    Append(entries, slot_name);
+    Delete(value);
+  }
+
+  Printf(f_rktwrap, ")))\n\n");
+  Setattr(known_other_types, tyname, "1");
+  return SWIG_OK;
 }
 
 // Includes structs
