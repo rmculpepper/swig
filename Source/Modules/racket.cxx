@@ -154,9 +154,17 @@ enum declared_t RACKET::get_type_declared(String *type, const char *prefix = NUL
 }
 
 void RACKET::set_known_type(String *type, const char *prefix, String *ffitype, String *ptrtype) {
-  if (prefix) { type = NewStringf("%s %s", prefix, type); }
+  // Maps both "type" and "prefix type" (if present), because of the
+  // way Swig handles typedef to named struct/enum/union.
+  // Printf(stderr, "Adding type: %s = %s\n", type, ffitype);
   Setattr(known_types, type, ffitype);
-  if (ptrtype) { add_known_pointer_type(ffitype, ptrtype); }
+  if (ptrtype) {
+    add_known_pointer_type(ffitype, ptrtype);
+  }
+  if (prefix) {
+    type = NewStringf("%s %s", prefix, type);
+    Setattr(known_types, type, ffitype);
+  }
 }
 
 void RACKET::add_known_pointer_type(String *type, String *ptrtype) {
@@ -357,6 +365,7 @@ int RACKET::variableWrapper(Node *n) {
 int RACKET::typedefHandler(Node *n) {
   String *tdname = Getattr(n, "name");
   String *tdtype = NewStringf("_%s", tdname);
+  SwigType *ty = Getattr(n, "type");
 
   if (get_type_declared(tdname) != undeclared) {
     // COND was (get_known_pointer_type(tdtype) || Getattr(known_other_types, tdtype))
@@ -365,7 +374,6 @@ int RACKET::typedefHandler(Node *n) {
     // So just skip the typedef.
     ;
   } else {
-    SwigType *ty = Getattr(n, "type");
     String *ffitype = get_ffi_type(n, ty);
     String *ptrtype = get_known_pointer_type(ffitype);
 
@@ -400,10 +408,10 @@ int RACKET::enumforwardDeclaration(Node *n) {
 }
 
 void RACKET::declare_forward_type(String *name, int isstruct) {
-  Printf(f_rkthead, "(define _FWD-%s (begin _void #| _%s |#))\n");
+  Printf(f_rkthead, "(define _FWD-%s (begin _void #| _%s |#))\n", name, name);
   if (isstruct) {
     Printf(f_rkthead, "(define _FWD-%s-pointer/null (_cpointer/null '%s) #| _%s-cpointer/null |#)\n",
-           name, name);
+           name, name, name);
   }
   Printf(f_rkthead, "\n");
 }
