@@ -367,6 +367,23 @@ int RACKET::typedefHandler(Node *n) {
   String *tdtype = NewStringf("_%s", tdname);
   SwigType *ty = Getattr(n, "type");
 
+  // "typedef struct foo_st {...} Foo;" => class with
+  //   classtype = "struct foo_st"
+  //   name = "foo_st"
+  //   kind = "struct"
+  //   sym:name = "Foo"
+  //   tdname = "Foo"
+  // and then cdecl with
+  //   name = "Foo", kind = "typedef", type = "struct foo_st", view = "cDeclaration"
+
+  // "struct bar_st {...}" => class with
+  // - classtype = "struct bar_st"
+  // - name = "bar_st"
+  // - kind = "struct"
+  // - sym:name = "bar_st"
+  // "typedef struct bar_st Bar" => cdecl with
+  //   name = "Bar", sym:name = "Bar", kind = "typedef", type = "struct bar" (!!!)
+
   if (get_type_declared(tdname) != undeclared) {
     // COND was (get_known_pointer_type(tdtype) || Getattr(known_other_types, tdtype))
     // That means tdtype is already declared as a struct/enum/union, eg
