@@ -82,18 +82,14 @@ private:
   void add_known_pointer_type(String *type, String *ptrtype);
   String *get_known_pointer_type(String *type);
   enum declared_t get_type_declared(String *type, const char *prefix);
-  void declare_forward_type(String *name, int isstruct);
+  void declare_forward_type(String *name, String *wholetype);
   void write_function_params(File *out, Node *n, ParmList *pl, int indent, List *argouts);
   String *stringOfUnion(Node *n, int indent);
   int extern_all_flag;
 
   Hash *known_types;         // eg "struct point_st" -> "_point_st" or "_FWD-point_st"
   Hash *known_pointer_types; // eg "_point_st" -> "_point_st-pointer/null"
-
-  Hash *used_structs;
-  Hash *defined_structs;
-  Hash *used_enums;
-  Hash *defined_enums;
+  Hash *skip_typedef;        // eg "Point" -> "1"
   struct member_ctx *mctx;
 };
 
@@ -118,10 +114,7 @@ void RACKET::main(int argc, char *argv[]) {
   emit_define_foreign = 0;
   known_types = NewHash();
   known_pointer_types = NewHash();
-  used_structs = NewHash();
-  defined_structs = NewHash();
-  used_enums = NewHash();
-  defined_enums = NewHash();
+  skip_typedef = NewHash();
   mctx = NULL;
 
   for (i = 1; i < argc; i++) {
@@ -362,34 +355,42 @@ int RACKET::variableWrapper(Node *n) {
   return SWIG_OK;
 }
 
+/* Type declarations and typedefs
+ 
+   "typedef struct foo_st {...} Foo;" 
+   produces a class with
+   - name = "foo_st"
+   - kind = "struct"
+   - sym:name = "Foo"
+   - tdname = "Foo"
+   and a cdecl with
+   - name = "Foo"
+   - kind = "typedef"
+   - type = "struct foo_st"
+
+   "struct bar_st {...};"
+   produces a class with
+   - name = "bar_st"
+   - kind = "struct"
+   - sym:name = "bar_st"
+
+   typedef struct bar_st Bar;"
+   produces a cdecl with
+   - name = "Bar"
+   - kind = "typedef"
+   - sym:name = "Bar"
+   - type = "struct bar_st"
+*/
+
 int RACKET::typedefHandler(Node *n) {
   String *tdname = Getattr(n, "name");
   String *tdtype = NewStringf("_%s", tdname);
   SwigType *ty = Getattr(n, "type");
 
-  // "typedef struct foo_st {...} Foo;" => class with
-  //   classtype = "struct foo_st"
-  //   name = "foo_st"
-  //   kind = "struct"
-  //   sym:name = "Foo"
-  //   tdname = "Foo"
-  // and then cdecl with
-  //   name = "Foo", kind = "typedef", type = "struct foo_st", view = "cDeclaration"
-
-  // "struct bar_st {...}" => class with
-  // - classtype = "struct bar_st"
-  // - name = "bar_st"
-  // - kind = "struct"
-  // - sym:name = "bar_st"
-  // "typedef struct bar_st Bar" => cdecl with
-  //   name = "Bar", sym:name = "Bar", kind = "typedef", type = "struct bar" (!!!)
-
-  if (get_type_declared(tdname) != undeclared) {
-    // COND was (get_known_pointer_type(tdtype) || Getattr(known_other_types, tdtype))
+  if (Getattr(skip_typedef, tdname) != NULL) {
     // That means tdtype is already declared as a struct/enum/union, eg
     //   typedef struct point_st Point;
     // So just skip the typedef.
-    ;
   } else {
     String *ffitype = get_ffi_type(n, ty);
     String *ptrtype = get_known_pointer_type(ffitype);
@@ -424,13 +425,20 @@ int RACKET::enumforwardDeclaration(Node *n) {
   return SWIG_OK;
 }
 
-void RACKET::declare_forward_type(String *name, int isstruct) {
-  Printf(f_rkthead, "(define _FWD-%s (begin _void #| _%s |#))\n", name, name);
+void RACKET::declare_forward_type(String *name, String *wholetype) {
+  int isenum = !Strncmp(wholetype, "enum ", strlen("enum "));
+  if (isenum) {
+    Printf(f_rkthead, "(define _FWD-%s (begin _fixint #| _%s |#))\n", name, name);
+  } else {
+    Printf(f_rkthead, "(define _FWD-%s (begin _void #| _%s |#))\n", name, name);
+  }
+  int isstruct = !Strncmp(wholetype, "struct ", strlen("struct "));
   if (isstruct) {
     Printf(f_rkthead, "(define _FWD-%s-pointer/null (_cpointer/null '%s) #| _%s-cpointer/null |#)\n",
            name, name, name);
   }
   Printf(f_rkthead, "\n");
+  
 }
 
 int RACKET::enumDeclaration(Node *n) {
@@ -440,6 +448,9 @@ int RACKET::enumDeclaration(Node *n) {
   String *name = Getattr(n, "sym:name");
   String *tyname = NewStringf("_%s", name);
   set_known_type(name, "enum", tyname, NULL);
+
+  String *tdname = Getattr(n, "tdname");
+  if (tdname) { Setattr(skip_typedef, tdname, "1"); }
 
   Printf(f_rktwrap, "(define %s\n", tyname);
   Printf(f_rktwrap, "  (_enum '(");
@@ -470,9 +481,11 @@ int RACKET::classDeclaration(Node *n) {
   String *kind = Getattr(n, "kind");
   int result;
 
+  String *tdname = Getattr(n, "tdname");
+  if (tdname) { Setattr(skip_typedef, tdname, "1"); }
+
   struct member_ctx my_mctx = { NewList(), mctx };
   mctx = &my_mctx;
-
   result = Language::classDeclaration(n);
   mctx = my_mctx.prev;
 
@@ -723,8 +736,9 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
 
     switch (get_type_declared(str)) {
     case undeclared:
-      declare_forward_type(name, !Strncmp(str, "struct ", strlen("struct ")));
+      declare_forward_type(name, str);
       result = NewStringf("_FWD-%s", name);
+      set_known_type(str, NULL, result, NULL);
       break;
     case forward_declared:
       result = NewStringf("_FWD-%s", name);
