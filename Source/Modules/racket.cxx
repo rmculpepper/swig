@@ -486,17 +486,12 @@ int RACKET::typedefHandler(Node *n) {
   } else {
     SwigType *ty = Getattr(n, "type");
     String *rhsffitype = get_ffi_type(n, ty);
-    Printf(stderr, "-- rhsffitype = %s\n", rhsffitype);
     TypeRecord *rhs = getFFITypeRecord(rhsffitype);
-    Printf(stderr, "-- rhs = %p\n", rhs);
 
     Printf(f_rktwrap, "(define %s %s)\n", tdtr->ffitype, rhsffitype);
     if (rhs && rhs->ptrtype) {
-      Printf(stderr, "-- 1, %s\n", rhs->ptrtype);
       tdtr->addPtrType();
-      Printf(stderr, "-- 2, %s\n", tdtr->ptrtype);
       Printf(f_rktwrap, "(define %s %s)\n", tdtr->ptrtype, rhs->ptrtype);
-      Printf(stderr, "-- 3\n");
     }
     Printf(f_rktwrap, "\n");
     tdtr->declared = fully_declared;
