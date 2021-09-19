@@ -39,8 +39,8 @@ Racket Options (available with -racket)\n\
 
 class DeclItem {
 public:
-  String *str;
-  List *deps;
+  String *str;  // Racket code to emit
+  List *deps;   // list of { String* | NewVoid(DeclItem*) }
   int inserted;
 
   DeclItem() {
@@ -60,12 +60,20 @@ public:
     }
   }
 
+  void addString(String *s) {
+    Append(this->deps, s);
+  }
+
   void write(File *out) {
     if (!inserted) {
       inserted = 1;
       for (Iterator iter = First(deps); iter.item; iter = Next(iter)) {
-        DeclItem *item = (DeclItem*)Data(iter.item);
-        item->write(out);
+        if (DohIsString(iter.item)) {
+          Printf(out, "%s", iter.item);
+        } else {
+          DeclItem *item = (DeclItem*)Data(iter.item);
+          item->write(out);
+        }
       }
       Printf(out, "%s\n", str);
     }
@@ -417,7 +425,7 @@ int RACKET::constantWrapper(Node *n) {
     Printf(f_rktwrap, "(define-foreign %s _fpointer #:c-id %s)\n\n", name, cname);
   } else {
     String *converted_value = convert_literal(Getattr(n, "value"), type);
-    Printf(f_rktwrap, "(define %s %s)\n\n", name, converted_value);
+    f_rkttypes->addString(NewStringf("(define %s %s)\n\n", name, converted_value));
     Delete(converted_value);
   }
 
