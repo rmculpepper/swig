@@ -990,7 +990,7 @@ String *convert_numeric_expr(char *s0) {
   String *out = NewString("");
   char *s = s0;
   char *end = s + strlen(s);
-  int read = 0;
+  int read = 0, nlen = 0;
   char op = 0;
 
   intptr_t ivalue;
@@ -1000,7 +1000,11 @@ String *convert_numeric_expr(char *s0) {
  READ_NUM:
   sscanf(s, " %n", &read);
   s = s + read; read = 0;
-  if ((sscanf(s, "%ji%n", &ivalue, &read) == 1) && (s[read] !='.')) {
+  if (sscanf(s, "%ji%1[uU]%2[lL]%n", &ivalue, &svalue[0], &svalue[2], &read) == 3) {
+    goto GOT_INTEGER;
+  } else if (sscanf(s, "%ji%2[lL]%n", &ivalue, &svalue[0], &read) == 2) {
+    goto GOT_INTEGER;
+  } else if ((sscanf(s, "%ji%n", &ivalue, &read) == 1) && (s[read] !='.')) {
     goto GOT_INTEGER;
   } else if (sscanf(s, "%lf%n", &dvalue, &read) == 1) {
     // Printf(out, "%lf ", dvalue);
@@ -1012,17 +1016,28 @@ String *convert_numeric_expr(char *s0) {
   }
 
  GOT_INTEGER:
-  if (read == 1 || s[0] != '0') {
+  nlen = read;
+  while (1) {
+    switch (s[nlen - 1]) {
+    case 'u': case 'U': case 'l': case 'L':
+      nlen--;
+      continue;
+    default:
+      ;
+    }
+    break;
+  }
+  if (nlen == 1 || s[0] != '0') {
     // decimal
-    Write(out, s, read);
+    Write(out, s, nlen);
   } else if (s[1] == 'x' || s[1] == 'X') {
     // hexadecimal
     Printf(out, "#x");
-    Write(out, s + 2, read - 2);
+    Write(out, s + 2, nlen - 2);
   } else {
     // octal
     Printf(out, "#o");
-    Write(out, s + 1, read - 1);
+    Write(out, s + 1, nlen - 1);
   }
   Printf(out, " ");
   s = s + read;
