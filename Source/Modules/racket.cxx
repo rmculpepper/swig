@@ -353,6 +353,10 @@ int RACKET::top(Node *n) {
     Printf(f_rkthead, "(define foreign-lib (ffi-lib \"%s.so\"))\n", module);
     Printf(f_rkthead, "(define-ffi-definer define-foreign foreign-lib)\n\n");
   }
+  if (0) {
+    Printf(f_rkthead, "(define (FIXME . args) 'FIXME)\n\n");
+    Printf(f_rkthead, "(define (_FIXME . args) _void)\n\n");
+  }
 
   if (1) {
     Dump(f_rktbegin, f_rkt);  Delete(f_rktbegin); f_rktbegin = NULL;
@@ -533,8 +537,18 @@ int RACKET::typedefHandler(Node *n) {
     tdtr->decl->reset();
     String *rhsrtype = getRacketType(n, ty, tdtr->decl);
     TypeRecord *rhs = getRacketTypeRecord(rhsrtype);
-    Printf(tdtr->decl->str, "(define %s %s)\n", tdtr->ffitype, rhsrtype);
-    f_rkttypes->addDep(tdtr->decl);
+    if (Strcmp(tdtr->ffitype, rhsrtype)) {
+      Printf(tdtr->decl->str, "(define %s %s)\n", tdtr->ffitype, rhsrtype);
+      if (1) {
+        // FIXME: It is common to "typedef struct point_st Point" and then only
+        // use "Point*", leaving "struct point_st" incomplete. That is, ptrdecl
+        // is used, but decl is unused. Add option to omit main decl if unused.
+        // BUT then wrappers need to trigger deps too :(
+        f_rkttypes->addDep(tdtr->decl);
+      }
+    } else {
+      // If same names, just omit to avoid (define _Type _Type).
+    }
 
     if (rhs && rhs->ptrtype) {
       tdtr->addIndyPtrType();
