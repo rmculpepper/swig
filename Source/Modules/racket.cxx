@@ -35,6 +35,44 @@ Racket Options (available with -racket)\n\
 ";
 
 // ============================================================
+// DeclItems
+
+class DeclItem {
+public:
+  String *str;
+  List *deps;
+  int inserted;
+
+  DeclItem() {
+    reset();
+  }
+
+  void reset() {
+    this->str = NewString("");
+    this->deps = NewList();
+    this->inserted = 0;
+  }
+
+  void addDep(DeclItem *dep) {
+    if (dep) {
+      DOH *p = NewVoid(dep, NULL); // FIXME: free
+      Append(this->deps, p);
+    }
+  }
+
+  void write(File *out) {
+    if (!inserted) {
+      inserted = 1;
+      for (Iterator iter = First(deps); iter.item; iter = Next(iter)) {
+        DeclItem *item = (DeclItem*)Data(iter.item);
+        item->write(out);
+      }
+      Printf(out, "%s\n", str);
+    }
+  }
+};
+
+// ============================================================
 // Type Records
 
 enum declared_t { undeclared, forward_declared, fully_declared };
@@ -45,10 +83,10 @@ public:
   String *ctype;
   const char *ckind;
   String *cname;
-  String *ffitype;
-  String *ptrtype;
-  int fixup_position;   // if >= 0, position to insert fixup_insert
-  String *fixup_insert; // if not NULL, string to insert into f_rktwrap
+  String *ffitype;    // Racket expr for type
+  String *ptrtype;    // Racket expr for ptr type, or NULL
+  DeclItem *decl;     // Racket declaration of ffitype
+  DeclItem *ptrdecl;  // Racket declaration of ptrtype (if not NULL)
 
   int isKnown() { return (declared != undeclared); }
   int isDefined() { return (declared == fully_declared); }
@@ -56,57 +94,52 @@ public:
   int isEnum() { return !Strcmp(ckind, "enum"); }
   int isUnion() { return !Strcmp(ckind, "union"); }
 
-  int setFixup(int position, String *insert) {
-    // returns true if new fixup added
-    this->fixup_insert = insert;
-    if (fixup_position < 0) {
-      this->fixup_position = position;
-      return 1;
-    } else {
-      return 0;
-    }
+  void addIndyPtrType() {
+    this->ptrtype = NewStringf("%s*", this->ffitype);
+    this->ptrdecl = new DeclItem();
   }
 
-  void addPtrType() {
-    if (!this->ptrtype) {
-      this->ptrtype = NewStringf("%s*", this->ffitype);
-      Printf(stderr, "... added ptr type %s\n", this->ptrtype);
-    } else {
-      Printf(stderr, "... not adding ptr type\n");
-    }
+  void setStructDefined() {
+    this->ptrtype = NewStringf("%s-pointer/null", this->ffitype);
+    this->ptrdecl = this->decl; // same declaration defines both
   }
 
   TypeRecord(String *ctype) {
+    char *str = Char(ctype);
     this->declared = undeclared;
     this->ctype = Copy(ctype);
-
-    {
-      char *str = Char(ctype);
-      if (!Strncmp(str, "struct ", strlen("struct "))) {
-        this->ckind = "struct";
-        this->cname = NewString(str + strlen("struct "));
-      } else if (!Strncmp(str, "class ", strlen("class "))) {
-        this->ckind = "class";
-        this->cname = NewString(str + strlen("class "));
-      } else if (!Strncmp(str, "union ", strlen("union "))) {
-        this->ckind = "union";
-        this->cname = NewString(str + strlen("union "));
-      } else if (!Strncmp(str, "enum ", strlen("enum "))) {
-        this->ckind = "enum";
-        this->cname = NewString(str + strlen("enum "));
-      } else {
-        this->ckind = NULL;
-        this->cname = NewString(str);
-      }
+    if (!Strncmp(str, "struct ", strlen("struct "))) {
+      this->ckind = "struct";
+      this->cname = NewString(str + strlen("struct "));
+    } else if (!Strncmp(str, "class ", strlen("class "))) {
+      this->ckind = "class";
+      this->cname = NewString(str + strlen("class "));
+    } else if (!Strncmp(str, "union ", strlen("union "))) {
+      this->ckind = "union";
+      this->cname = NewString(str + strlen("union "));
+    } else if (!Strncmp(str, "enum ", strlen("enum "))) {
+      this->ckind = "enum";
+      this->cname = NewString(str + strlen("enum "));
+    } else {
+      this->ckind = "";
+      this->cname = NewString(str);
     }
     this->ffitype = NewStringf("_%s", this->cname);
-    if (this->ckind && !Strcmp(this->ckind, "struct")) {
-      this->ptrtype = NewStringf("_%s-pointer/null", this->cname);
+    if (!Strcmp(this->ckind, "struct")) {
+      this->ptrtype = NewStringf("(_cpointer/null '%s)", this->cname);
     } else {
       this->ptrtype = NULL;
     }
-    this->fixup_position = -1;
-    this->fixup_insert = NULL;
+
+    this->decl = new DeclItem();
+    Printf(this->decl->str, ";; Incomplete or missing declaration for %s\n", this->ctype);
+    if (this->isEnum()) {
+      Printf(this->decl->str, "(define %s _fixint)\n", this->ffitype);
+    } else {
+      Printf(this->decl->str, "(define %s (_FIXME #| %s |#))\n", this->ffitype, this->ctype);
+    }
+
+    this->ptrdecl = NULL;
   }
 };
 
@@ -133,6 +166,7 @@ public:
   File *f_rkt;
   File *f_rktbegin;
   File *f_rkthead;
+  DeclItem *f_rkttypes;
   File *f_rktwrap;
   File *f_rktinit;
 
@@ -155,13 +189,11 @@ public:
 private:
   TypeRecord *getTypeRecord(String *type, const String_or_char *prefix = NULL);
   void registerTypeRecord(String *ctype, TypeRecord *tr);
-  TypeRecord *getFFITypeRecord(String *ffitype);
+  TypeRecord *getRacketTypeRecord(String *ffitype);
   void declareForwardType(TypeRecord *tr);
-  void setFixup(String *ty, String *insert);
-  void writeFunParams(File *out, Node *n, ParmList *pl, int indent, List *argouts);
+  void writeFunParams(File *out, Node *n, ParmList *pl, int indent, List *argouts, DeclItem *client);
   String *getMappedType(Node *n, SwigType *ty);
-
-  String *get_ffi_type(Node *n, SwigType *ty);
+  String *getRacketType(Node *n, SwigType *ty, DeclItem *di = NULL);
 
   Hash *type_records;        // eg "struct point_st" -> new TypeRecord(....)
   Hash *ffitype_records;     // eg "_point" -> new TypeRecord(....)
@@ -232,16 +264,9 @@ void RACKET::registerTypeRecord(String *ctype, TypeRecord *tr) {
   Setattr(ffitype_records, tr->ffitype, p);
 }
 
-TypeRecord *RACKET::getFFITypeRecord(String *ffitype) {
+TypeRecord *RACKET::getRacketTypeRecord(String *ffitype) {
   DOH *p = Getattr(ffitype_records, ffitype);
   return p ? (TypeRecord*)Data(p) : NULL;
-}
-
-void RACKET::setFixup(String *ctype, String *insert) {
-  TypeRecord *tr = getTypeRecord(ctype);
-  if (tr->setFixup(Len(f_rktwrap), insert)) {
-    Append(fixup_list, tr->ctype);
-  }
 }
 
 int RACKET::top(Node *n) {
@@ -286,6 +311,7 @@ int RACKET::top(Node *n) {
   {
     f_rktbegin = NewString("");
     f_rkthead = NewString("");
+    f_rkttypes = new DeclItem();
     f_rktwrap = NewString("");
     f_rktinit = NewString("");
 
@@ -307,25 +333,8 @@ int RACKET::top(Node *n) {
   if (1) {
     Dump(f_rktbegin, f_rkt);  Delete(f_rktbegin); f_rktbegin = NULL;
     Dump(f_rkthead,  f_rkt);  Delete(f_rkthead);  f_rkthead = NULL;
-
-    // like Dump(f_rktwrap, f_rkt), but interleave fixups:
-    char *rktwrap = Char(f_rktwrap);
-    long last_position = 0;
-    for (Iterator iter = First(fixup_list); iter.item; iter = Next(iter)) {
-      TypeRecord *tr = getTypeRecord(iter.item);
-      long position = tr->fixup_position;
-      Printf(stderr, "## STEP %s, %d\n", tr->ffitype, position);
-      String *insert = tr->fixup_insert;
-      if (position >= 0) {
-        Write(f_rkt, rktwrap + last_position, (int)(position - last_position));
-        Printf(f_rkt, ";; FIXUP!\n");
-        Printf(f_rkt, "%s", insert);
-        last_position = tr->fixup_position;
-      }
-    }
-    Write(f_rkt, rktwrap + last_position, (int)(Len(f_rktwrap) - last_position));
-    Delete(f_rktwrap);  f_rktwrap = NULL;
-
+    f_rkttypes->write(f_rkt);
+    Dump(f_rktwrap,  f_rkt);  Delete(f_rktwrap);  f_rktwrap = NULL;
     Dump(f_rktinit, f_rkt);   Delete(f_rktinit);  f_rktinit = NULL;
     Delete(f_rkt);            f_rkt = NULL;
   }
@@ -356,14 +365,14 @@ int RACKET::functionWrapper(Node *n) {
   Swig_typemap_attach_parms("rktin", pl, 0);
   Swig_typemap_attach_parms("rktargout", pl, 0);
 
-  String *restype = get_ffi_type(n, Getattr(n, "type"));
+  String *restype = getRacketType(n, Getattr(n, "type"), NULL);
   List *argouts = NewList();
   String *result_expr = Getattr(n, "feature:fun-result");
 
   Printf(out, "(define-foreign %s\n", func_name);
   Printf(out, "  (_fun ");
   writeFunPrefix(out, Getattr(n, "feature:fun-prefix"), 2 + strlen("(_fun "));
-  writeFunParams(out, n, pl, 2 + strlen("(_fun "), argouts);
+  writeFunParams(out, n, pl, 2 + strlen("(_fun "), argouts, NULL);
   if (result_expr) {
     Printf(out, "-> [result : %s]", restype);
     writeIndent(out, 2 + strlen("(_fun "), 0);
@@ -422,7 +431,7 @@ int RACKET::variableWrapper(Node *n) {
 
   String *var_name = Getattr(n, "sym:name");
   String *cname = Getattr(n, "name");
-  String *lisp_type = get_ffi_type(n, Getattr(n, "type"));
+  String *lisp_type = getRacketType(n, Getattr(n, "type"), NULL);
   Printf(stderr, "## var %s\n", cname);
 
   if (1) {
@@ -477,6 +486,7 @@ int RACKET::variableWrapper(Node *n) {
 
 int RACKET::typedefHandler(Node *n) {
   String *tdname = Getattr(n, "name");
+  Printf(stderr, "## typedef %s\n", tdname);
   TypeRecord *tdtr = getTypeRecord(tdname);
   Printf(stderr, "## typedef %s, %d\n", tdname, tdtr->declared);
 
@@ -485,15 +495,18 @@ int RACKET::typedefHandler(Node *n) {
     //   typedef struct point_st Point;
   } else {
     SwigType *ty = Getattr(n, "type");
-    String *rhsffitype = get_ffi_type(n, ty);
-    TypeRecord *rhs = getFFITypeRecord(rhsffitype);
+    tdtr->decl->reset();
+    String *rhsrtype = getRacketType(n, ty, tdtr->decl);
+    TypeRecord *rhs = getRacketTypeRecord(rhsrtype);
+    Printf(tdtr->decl->str, "(define %s %s)\n", tdtr->ffitype, rhsrtype);
+    f_rkttypes->addDep(tdtr->decl);
 
-    Printf(f_rktwrap, "(define %s %s)\n", tdtr->ffitype, rhsffitype);
     if (rhs && rhs->ptrtype) {
-      tdtr->addPtrType();
-      Printf(f_rktwrap, "(define %s %s)\n", tdtr->ptrtype, rhs->ptrtype);
+      tdtr->addIndyPtrType();
+      Printf(tdtr->ptrdecl->str, "(define %s %s)\n", tdtr->ptrtype, rhs->ptrtype);
+      tdtr->ptrdecl->addDep(rhs->ptrdecl);
+      f_rkttypes->addDep(tdtr->ptrdecl);
     }
-    Printf(f_rktwrap, "\n");
     tdtr->declared = fully_declared;
   }
   return Language::typedefHandler(n);
@@ -522,23 +535,8 @@ int RACKET::enumforwardDeclaration(Node *n) {
 
 void RACKET::declareForwardType(TypeRecord *tr) {
   Printf(stderr, "## FWD %s, %d\n", tr->ffitype, tr->declared);
-  if (!tr->isKnown()) {
-    String *decl = NewString("");
-
-    Printf(decl, ";; Incomplete or missing declaration for %s\n", tr->ctype);
-    if (tr->isEnum()) {
-      Printf(decl, "(define %s _fixint)\n", tr->ffitype);
-    } else {
-      Printf(decl, "(define %s (_FIXME #| %s |#))\n", tr->ffitype, tr->ctype);
-    }
-    if (tr->ptrtype) {
-      Printf(decl, "(define %s (_cpointer/null '%s))\n", tr->ptrtype, tr->cname);
-    }
-    Printf(decl, "\n");
-
-    tr->declared = forward_declared;
-    setFixup(tr->ctype, decl);
-  }
+  f_rkttypes->addDep(tr->decl);
+  f_rkttypes->addDep(tr->ptrdecl);
 }
 
 int RACKET::enumDeclaration(Node *n) {
@@ -552,20 +550,22 @@ int RACKET::enumDeclaration(Node *n) {
   if (tdname) { registerTypeRecord(tdname, tr); }
   int first = 1;
 
-  Printf(f_rktwrap, "(define %s\n", tr->ffitype);
-  Printf(f_rktwrap, "  (_enum '(");
+  tr->decl->reset();
+  String *out = tr->decl->str;
+  Printf(out, "(define %s\n", tr->ffitype);
+  Printf(out, "  (_enum '(");
   for (Node *c = firstChild(n); c; c = nextSibling(c)) {
     String *slot_name = Getattr(c, "name");
     String *value = Getattr(c, "enumvalue");
-    if (!first) { Printf(f_rktwrap, " "); } else { first = 0; }
+    if (!first) { Printf(out, " "); } else { first = 0; }
     if (value && Strcmp(value, "")) {
-      Printf(f_rktwrap, "%s = %s", slot_name, value);
+      Printf(out, "%s = %s", slot_name, value);
     } else {
-      Printf(f_rktwrap, "%s", slot_name);
+      Printf(out, "%s", slot_name);
     }
     Delete(value);
   }
-  Printf(f_rktwrap, ")))\n\n");
+  Printf(out, ")))\n");
 
   tr->declared = fully_declared;
   return SWIG_OK;
@@ -589,8 +589,10 @@ int RACKET::classDeclaration(Node *n) {
   if (result != SWIG_OK) return result;
 
   if (!Strcmp(kind, "struct")) {
-    String *out = NewString("");
+    tr->decl->reset();
+    String *out = tr->decl->str;
     tr->declared = fully_declared;
+    tr->setStructDefined();
 
     int first = 1;
     Printf(out, "(define-cstruct %s\n", tr->ffitype);
@@ -601,15 +603,12 @@ int RACKET::classDeclaration(Node *n) {
         String *temp = Copy(Getattr(c, "decl"));
         if (temp) {
           Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
-          String *lisp_type = get_ffi_type(n, temp);
+          String *ffitype = getRacketType(n, temp, tr->decl);
           Delete(temp);
-
-          String *slot_name = Getattr(c, "sym:name");
-
+          String *slotname = Getattr(c, "sym:name");
           if (!first) { writeIndent(out, 3, 0); } else { first = 0; }
-          Printf(out, "[%s %s]", slot_name, lisp_type);
-
-          Delete(lisp_type);
+          Printf(out, "[%s %s]", slotname, ffitype);
+          Delete(ffitype);
         }
       } else {
         Printf(stderr, "Structure %s has a slot that we can't deal with.\n", name);
@@ -621,14 +620,14 @@ int RACKET::classDeclaration(Node *n) {
     Printf(out, ")");
     write_wrapper_options(out, Getattr(n, "feature:struct-options"), 2,
                           tr->ffitype, Getattr(n, "name"));
-    Printf(out, ")\n\n");
+    Printf(out, ")\n");
 
-    Printf(f_rktwrap, "%s", out);
-    Delete(out);
+    f_rkttypes->addDep(tr->decl);
     return SWIG_OK;
   }
   else if (!Strcmp(kind, "union")) {
-    String *out = NewString("");
+    tr->decl->reset();
+    String *out = tr->decl->str;
 
     int first = 1;
     Printf(out, "(define %s\n", tr->ffitype);
@@ -640,13 +639,12 @@ int RACKET::classDeclaration(Node *n) {
         String *temp = Copy(Getattr(c, "decl"));
         if (temp) {
           Append(temp, Getattr(c, "type"));	//appending type to the end, otherwise wrong type
-          String *lisp_type = get_ffi_type(n, temp);
+          String *ffitype = getRacketType(n, temp, tr->decl);
           Delete(temp);
 
           if (!first) { writeIndent(out, indent, 0); } else { first = 0; }
-          Printf(out, "%s", lisp_type);
-
-          Delete(lisp_type);
+          Printf(out, "%s", ffitype);
+          Delete(ffitype);
         }
       } else {
         Printf(stderr, "Union %s has a slot that we can't deal with.\n", Getattr(n, "name"));
@@ -655,11 +653,10 @@ int RACKET::classDeclaration(Node *n) {
         SWIG_exit(EXIT_FAILURE);
       }
     }
-    Printf(out, "))\n\n");
+    Printf(out, "))\n");
 
     tr->declared = fully_declared;
-    Printf(f_rktwrap, "%s", out);
-    Delete(out);
+    f_rkttypes->addDep(tr->decl);
     return SWIG_OK;
   }
   else {
@@ -707,7 +704,7 @@ int RACKET::destructorDeclaration(Node *) {
 
 // ----------------------------------------
 
-void RACKET::writeFunParams(File *out, Node *n, ParmList *pl, int indent, List *argouts) {
+void RACKET::writeFunParams(File *out, Node *n, ParmList *pl, int indent, List *argouts, DeclItem *client) {
   Parm *p = pl;
   String *ao_tm;
   while (p) {
@@ -720,7 +717,7 @@ void RACKET::writeFunParams(File *out, Node *n, ParmList *pl, int indent, List *
       Delete(args);
       p = Getattr(p, "tmap:rktin:next");
     } else {
-      String *ffitype = get_ffi_type(n, Getattr(p, "type"));
+      String *ffitype = getRacketType(n, Getattr(p, "type"), client);
       if (argname) {
         Printf(out, "[%s : %s]", argname, ffitype);
       } else {
@@ -742,7 +739,7 @@ String *RACKET::getMappedType(Node *n, SwigType *ty) {
   return tm ? NewString(tm) : NULL;
 }
 
-String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
+String *RACKET::getRacketType(Node *n, SwigType *ty0, DeclItem *client) {
   String *result;
   SwigType *ty = Copy(ty0);     // private copy for mutation; delete at end
 
@@ -751,7 +748,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
   }
   else if (SwigType_isqualifier(ty)) {
     SwigType_del_qualifier(ty);
-    result = get_ffi_type(n, ty);
+    result = getRacketType(n, ty, client);
   }
   else if (SwigType_isarray(ty)) {
     String *array_dim = SwigType_array_getdim(ty, 0);
@@ -759,15 +756,15 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
       Delete(array_dim);
       SwigType_del_array(ty);
       SwigType_add_pointer(ty);
-      result = get_ffi_type(n, ty);
+      result = getRacketType(n, ty, client);
     } else if (SwigType_array_ndim(ty) == 1) {
       SwigType_pop_arrays(ty);
-      String *innertype = get_ffi_type(n, ty);
+      String *innertype = getRacketType(n, ty, client);
       result = NewStringf("(_array %s %s)", innertype, array_dim);
       Delete(array_dim);
       Delete(innertype);
     } else {
-      String *innertype = get_ffi_type(n, ty);
+      String *innertype = getRacketType(n, ty, client);
       result = NewStringf("(_array %s (FIXME #| %s |#))", innertype, array_dim);
       Delete(innertype);
     }
@@ -776,10 +773,10 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     // Unlike function decl, don't use "rktin", "rktargout" typemaps.
     SwigType *fn = SwigType_pop_function(ty);
     ParmList *pl = SwigType_function_parms(fn, n);
-    String *restype = get_ffi_type(n, ty);
+    String *restype = getRacketType(n, ty, client);
     String *out = NewString("");
     Printf(out, "(_fun ");
-    writeFunParams(out, n, pl, -1, NULL);
+    writeFunParams(out, n, pl, -1, NULL, client);
     Printf(out, "-> %s)", restype);
     Delete(fn);
     Delete(restype);
@@ -793,12 +790,15 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
     // Precedence: typemap, function, default
     String *inner = getMappedType(n, ty);
     if (!inner && SwigType_isfunction(ty)) {
-      result = get_ffi_type(n, ty);
+      result = getRacketType(n, ty, client);
     } else {
-      if (!inner) { inner = get_ffi_type(n, ty); }
-      TypeRecord *innertr = getFFITypeRecord(inner);
+      if (!inner) {
+        inner = getRacketType(n, ty, SwigType_issimple(ty) ? NULL : client);
+      }
+      TypeRecord *innertr = getRacketTypeRecord(inner);
       if (innertr && innertr->ptrtype) {
         result = Copy(innertr->ptrtype);
+        if (client) { client->addDep(innertr->ptrdecl); }
       } else {
         result = NewStringf("(_pointer-to %s)", inner);
       }
@@ -812,6 +812,7 @@ String *RACKET::get_ffi_type(Node *n, SwigType *ty0) {
       declareForwardType(tr);
     }
     result = Copy(tr->ffitype);
+    if (client) { client->addDep(tr->decl); }
   }
   else {
     result = NewStringf("(_FIXME #| %s |#)", SwigType_str(ty, 0));
