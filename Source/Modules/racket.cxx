@@ -42,6 +42,7 @@ public:
   String *str;  // Racket code to emit
   List *deps;   // list of { String* | NewVoid(DeclItem*) }
   int inserted;
+  DeclItem *joinwith;
 
   DeclItem() {
     reset();
@@ -51,6 +52,7 @@ public:
     this->str = NewString("");
     this->deps = NewList();
     this->inserted = 0;
+    this->joinwith = NULL;
   }
 
   void addDep(DeclItem *dep) {
@@ -65,18 +67,30 @@ public:
   }
 
   void write(File *out) {
+    (void)writek(out, NULL);
+    Printf(out, "\n");
+  }
+
+  void *writek(File *out, void *prev) {
     if (!inserted) {
       inserted = 1;
       for (Iterator iter = First(deps); iter.item; iter = Next(iter)) {
         if (DohIsString(iter.item)) {
+          if (prev != NULL) { Printf(out, "\n"); }
           Printf(out, "%s", iter.item);
+          prev = iter.item;
         } else {
           DeclItem *item = (DeclItem*)Data(iter.item);
-          item->write(out);
+          prev = item->writek(out, prev);
         }
       }
-      Printf(out, "%s\n", str);
+      if (Len(str)) {
+        if (prev != joinwith) { Printf(out, "\n"); }
+        Printf(out, "%s", str);
+        prev = this;
+      }
     }
+    return prev;
   }
 };
 
@@ -105,6 +119,7 @@ public:
   void addIndyPtrType() {
     this->ptrtype = NewStringf("%s*", this->ffitype);
     this->ptrdecl = new DeclItem();
+    this->ptrdecl->joinwith = this->decl;
   }
 
   void setStructDefined() {
@@ -341,8 +356,19 @@ int RACKET::top(Node *n) {
   if (1) {
     Dump(f_rktbegin, f_rkt);  Delete(f_rktbegin); f_rktbegin = NULL;
     Dump(f_rkthead,  f_rkt);  Delete(f_rkthead);  f_rkthead = NULL;
+
+    Printf(f_rkt, ";; ----------------------------------------\n");
+    Printf(f_rkt, ";; Types and Constants\n\n");
     f_rkttypes->write(f_rkt);
+
+    Printf(f_rkt, ";; ----------------------------------------\n");
+    Printf(f_rkt, ";; Wrappers\n\n");
     Dump(f_rktwrap,  f_rkt);  Delete(f_rktwrap);  f_rktwrap = NULL;
+
+    if (Len(f_rktinit)) {
+      Printf(f_rkt, ";; ----------------------------------------\n");
+      Printf(f_rkt, ";; Initialization\n\n");
+    }
     Dump(f_rktinit, f_rkt);   Delete(f_rktinit);  f_rktinit = NULL;
     Delete(f_rkt);            f_rkt = NULL;
   }
@@ -425,7 +451,7 @@ int RACKET::constantWrapper(Node *n) {
     Printf(f_rktwrap, "(define-foreign %s _fpointer #:c-id %s)\n\n", name, cname);
   } else {
     String *converted_value = convert_literal(Getattr(n, "value"), type);
-    f_rkttypes->addString(NewStringf("(define %s %s)\n\n", name, converted_value));
+    f_rkttypes->addString(NewStringf("(define %s %s)\n", name, converted_value));
     Delete(converted_value);
   }
 
