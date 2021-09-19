@@ -821,7 +821,7 @@ String *RACKET::getRacketType(Node *n, SwigType *ty0, DeclItem *client) {
     } else if (SwigType_array_ndim(ty) == 1) {
       SwigType_pop_arrays(ty);
       String *innertype = getRacketType(n, ty, client);
-      result = NewStringf("(_array %s %s)", innertype, array_dim);
+      result = NewStringf("(_array %s %s)", innertype, convert_numeric_expr(Char(array_dim)));
       Delete(array_dim);
       Delete(innertype);
     } else {
@@ -1033,17 +1033,9 @@ String *convert_numeric_expr(char *s0) {
   s = s + read; read = 0;
   if (s == end) {
     goto SUCCESS;
-  } else if (sscanf(s, "%1[|]%n", &svalue[0], &read)) {
-    if (!op || op == '|') {
-      op = '|';
-      s = s + read;
-      goto READ_NUM;
-    } else {
-      goto ERROR;
-    }
-  } else if (sscanf(s, "%1[+]%n", &svalue[0], &read)) {
-    if (!op || op == '+') {
-      op = '+';
+  } else if (sscanf(s, "%1[+*/|&%^-]%n", &svalue[0], &read)) {
+    if (!op || op == svalue[0]) {
+      op = svalue[0];
       s = s + read;
       goto READ_NUM;
     } else {
@@ -1061,16 +1053,22 @@ String *convert_numeric_expr(char *s0) {
   Chop(out);
   if (op == 0) {
     return out;
-  } else if (op == '|') {
-    String *result = NewStringf("(bitwise-ior %s)", out);
-    Delete(out);
-    return result;
-  } else if (op == '+') {
-    String *result = NewStringf("(+ %s)", out);
-    Delete(out);
-    return result;
   } else {
-    goto ERROR;
+    const char *f;
+    switch (op) {
+    case '+': f = "+"; break;
+    case '-': f = "-"; break;
+    case '*': f = "*"; break;
+    case '/': f = "/"; break; // FIXME: floating-point '/' vs integer 'quotient'
+    case '%': f = "modulo"; break;
+    case '|': f = "bitwise-ior"; break;
+    case '&': f = "bitwise-and"; break;
+    case '^': f = "bitwise-xor"; break;
+    default: goto ERROR;
+    }
+    String *result = NewStringf("(%s %s)", f, out);
+    Delete(out);
+    return result;
   }
 }
 
