@@ -217,6 +217,7 @@ private:
   void writeFunParams(File *out, Node *n, ParmList *pl, int indent, List *argouts, DeclItem *client);
   String *getMappedType(Node *n, SwigType *ty);
   String *getRacketType(Node *n, SwigType *ty, DeclItem *di = NULL);
+  void scanForNested(Node *n);
 
   Hash *type_records;        // eg "struct point_st" -> new TypeRecord(....)
   Hash *ffitype_records;     // eg "_point" -> new TypeRecord(....)
@@ -605,6 +606,7 @@ int RACKET::enumDeclaration(Node *n) {
   return SWIG_OK;
 }
 
+
 int RACKET::classDeclaration(Node *n) {
   String *name = Getattr(n, "sym:name");
   Printf(stderr, "## class %s\n", name);
@@ -614,6 +616,8 @@ int RACKET::classDeclaration(Node *n) {
 
   String *tdname = Getattr(n, "tdname");
   if (tdname) { registerTypeRecord(tdname, tr); }
+
+  scanForNested(n);
 
   struct member_ctx my_mctx = { NewList(), mctx };
   mctx = &my_mctx;
@@ -698,6 +702,29 @@ int RACKET::classDeclaration(Node *n) {
     Printf(stderr, " (name: %s)\n", name);
     SWIG_exit(EXIT_FAILURE);
     return 0; // unreachable (FIXME?)
+  }
+}
+
+void RACKET::scanForNested(Node *n) {
+  // Swig lifts nested struct decls *after* the outer struct decl, and fields in
+  // the outer struct refer to the lifted struct via a typedef-like name (ie, no
+  // "struct " prefix), which further confuses getTypeRecord. So when we hit a
+  // class defn, scan ahead for lifted struct decls, marked with "nested" attr,
+  // to register the type synonyms.
+  n = nextSibling(n);
+  while (n) {
+    if (Strcmp(nodeType(n), "class")) break;
+    if (!Getattr(n, "nested")) break;
+    if (Getattr(n, "ScannedForNested")) break;
+    Setattr(n, "ScannedForNesting", "1");
+    String *name = Getattr(n, "sym:name");
+    String *tdname = Getattr(n, "tdname");
+    String *kind = Getattr(n, "kind");
+    if (tdname) {
+      TypeRecord *tr = getTypeRecord(name, kind);
+      registerTypeRecord(tdname, tr);
+    }
+    n = nextSibling(n);
   }
 }
 
