@@ -1,59 +1,59 @@
 arrays -- ok
-bom_utf8 -- trivial
-c_delete -- trivial
-c_delete_function -- trivial
+bom_utf8 -- ok, trivial
+c_delete -- ok, trivial
+c_delete_function -- ok, trivial
 char_constant -- ok
-const_const -- trivial
-constant_expr -- FAIL
-default_args_c -- FAIL, static funs not exported!
-empty_c -- trivial
+const_const -- ok, trivial
+constant_expr -- ok
+default_args_c -- RTERROR, static funs not exported!
+empty_c -- ok, trivial
 enums -- ??? missing ???
-enum_forward -- FAIL, forward ref?
-enum_macro -- FIXME: missing constants w/in enum
-enum_missing -- FAIL
-extern_declaration -- ???
+enum_forward -- ok
+enum_macro -- ok
+enum_missing -- ok
+extern_declaration -- ok
 funcptr -- ok
-function_typedef -- FIXME
+function_typedef -- ok, FIXME: typedef to function, pointer to typedef...
 global_functions -- ok
 global_immutable_vars -- ok
 immutable_values -- ok
-inctest -- FAIL ???
+inctest -- FAIL, ??? (=> empty C struct)
 infinity -- ok
 integers -- ?? missing ??
 keyword_rename_c -- ok ??
-lextype  --- N/A, uses "in" typemap
-li_carrays -- FAIL, ???
+lextype  --- ok, N/A, uses "in" typemap
+li_carrays -- FAIL, ??? => empty C struct
 li_cdata -- FAIL, ???
 li_cmalloc -- FAIL
-li_constraints -- no
-li_cpointer -- no
-li_math -- FAIL, set foreign-lib = #f
-long_long -- FIXME, <num>L, etc
-memberin_extend_c -- no
+li_constraints -- ok, unsupported constraints.i
+li_cpointer -- no, lib declares empty C struct
+li_math -- RTERROR, lookup of cos needs foreign-lib = #f
+long_long -- ok
+memberin_extend_c -- ok, BAD C++
 name -- ok
-nested -- FAIL, nested (out of order)
-nested_extend_c -- no
-nested_structs -- no
-newobject2 -- ???
-not_c_keywords -- trivial
-overload_extend_c -- no
-overload_extend2 -- no
-preproc -- FAIL
+nested -- ok
+nested_extend_c -- ok
+nested_structs -- ok
+newobject2 -- ok, ??? (FIXME: %newobject => #:wrap (allocator free) ???)
+not_c_keywords -- ok, trivial
+overload_extend_c -- ok, no
+overload_extend2 -- ok, no
+preproc -- FAIL, nontrivial expression, defines `define` C var (FIXME)
 preproc_constants_c -- ??? missing ???
 preproc_defined -- ok
 preproc_gcc_output -- ok
 preproc_include -- ok
 preproc_line_file -- ?? missing ??
-register_par -- FAIL
+register_par -- FAIL, incomplete struct type (FIXME)
 ret_by_value -- ok
 simple_array -- ok ??
-sizeof_pointer -- FAIL, expr
+sizeof_pointer -- FAIL, nontrivial expr (sizeof)
 sneaky1 -- trivial
 string_simple -- ok, but not useful
 struct_rename -- FAIL
 struct_initialization -- ok
-typedef_classforward_same_name -- FAIL
+typedef_classforward_same_name -- ok
 typedef_struct -- ok
 typemap_subst -- no, typemap(in)
 union_parameter -- ok
-unions -- FAIL, union nested in struct
+unions -- ok
