@@ -443,7 +443,7 @@ int plot(double x, double y, int color=WHITE);  // NOT SUPPORTED
 </pre></div>
 
 <p>Also, the "default" typemap method is not supported. (See the "Common typemap
-method" section below.)</p>
+methods" section below.)</p>
 
 <p>To create a wrapper with default arguments, use the "fun-prefix" feature to
 specify the formal parameter list (ending in <code>::</code>) for
@@ -488,6 +488,36 @@ int add(int, int);
 (define-foreign sub _fpointer #:c-id sub)
 </pre></div>
 
+<h3 id="nested-structures-5.5.7">Nested structures (5.5.7)</h3>
+
+<p>Nested structures are supported:</p>
+
+<div class="code"><pre>
+typedef struct Object {
+  int objtype;
+  union {
+    int ivalue;
+    double dvalue;
+    char *strvalue;
+    void *ptrvalue;
+  } intRep;
+} Object;
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _Object_intRep
+  (_union _int
+          _double
+          _pointer
+          _pointer))
+(define-cstruct _Object
+  ([objtype _int]
+   [intRep _Object_intRep]))
+</pre></div>
+
+<p>Accessor functions are not defined for the <code>_Object_intRep</code> type;
+use Racket&apos;s support for <code>_union</code> types instead.</p>
+
 <h3 id="code-insertion-5.6">Code insertion (5.6)</h3>
 
 <p>The standard <code>"begin"</code>, <code>"runtime"</code>, <code>"header"</code>,
@@ -510,7 +540,8 @@ at module top-level (that is, not within a function)</li>
 
 </ul>
 
-<p>Use only the <code>"..."</code> and <code>%{...%}</code> notations for inserted code. Do not use <code>{...}</code>.</p>
+<p>Use only the <code>"..."</code> and <code>%{...%}</code> notations for
+inserted code. Do not use <code>{...}</code>.</p>
 
 <p>Do not use <code>%inline</code>, since it emits code to the <code>"header"</code> target.</p>
 
@@ -676,8 +707,6 @@ expressions that must be fixed by hand.</p>
 <ul>
 
 <li><code>%extend</code> (5.5.6)</li>
-
-<li>nested structures (5.5.7)</li>
 
 <li>C++ (6, 7, 8, 9)</li>
 

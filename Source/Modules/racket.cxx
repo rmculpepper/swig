@@ -398,7 +398,7 @@ int RACKET::functionWrapper(Node *n) {
   String *out = NewString("");
   String *func_name = Getattr(n, "sym:name");
   String *cname = Getattr(n, "name");
-  Printf(stderr, "## fun %s\n", cname);
+  // Printf(stderr, "## fun %s\n", cname);
 
   ParmList *pl = Getattr(n, "parms");
   Swig_typemap_attach_parms("rktin", pl, 0);
@@ -449,7 +449,7 @@ int RACKET::constantWrapper(Node *n) {
   String *name = Getattr(n, "sym:name");
   String *cname = Getattr(n, "name");
   String *type = Getattr(n, "type");
-  Printf(stderr, "## const %s\n", cname);
+  // Printf(stderr, "## const %s\n", cname);
 
   if (SwigType_isfunctionpointer(type) && cname) {
     // Result of %constant or %callback declaration, etc
@@ -471,7 +471,7 @@ int RACKET::variableWrapper(Node *n) {
   String *var_name = Getattr(n, "sym:name");
   String *cname = Getattr(n, "name");
   String *lisp_type = getRacketType(n, Getattr(n, "type"), NULL);
-  Printf(stderr, "## var %s\n", cname);
+  // Printf(stderr, "## var %s\n", cname);
 
   if (1) {
     Printf(f_rktwrap, "(define %s\n", var_name);
@@ -525,9 +525,8 @@ int RACKET::variableWrapper(Node *n) {
 
 int RACKET::typedefHandler(Node *n) {
   String *tdname = Getattr(n, "name");
-  Printf(stderr, "## typedef %s\n", tdname);
+  // Printf(stderr, "## typedef %s\n", tdname);
   TypeRecord *tdtr = getTypeRecord(tdname);
-  Printf(stderr, "## typedef %s, %d\n", tdname, tdtr->declared);
 
   if (tdtr->isKnown()) {
     // For example, maybe tdname is already declared as a struct/enum/union:
@@ -564,7 +563,7 @@ int RACKET::typedefHandler(Node *n) {
 int RACKET::classforwardDeclaration(Node *n) {
   String *name = Getattr(n, "sym:name");
   String *kind = Getattr(n, "kind");
-  Printf(stderr, "## fwd class %s\n", name);
+  // Printf(stderr, "## fwd class %s\n", name);
   if (0) {
     Printf(stderr, "forward declaration of %s :: %s\n", name, kind);
   }
@@ -574,7 +573,7 @@ int RACKET::classforwardDeclaration(Node *n) {
 
 int RACKET::enumforwardDeclaration(Node *n) {
   String *name = Getattr(n, "sym:name");
-  Printf(stderr, "## fwd enum %s\n", name);
+  // Printf(stderr, "## fwd enum %s\n", name);
   if (0) {
     Printf(stderr, "forward declaration of %s :: enum\n", name);
   }
@@ -583,7 +582,7 @@ int RACKET::enumforwardDeclaration(Node *n) {
 }
 
 void RACKET::declareForwardType(TypeRecord *tr) {
-  Printf(stderr, "## FWD %s, %d\n", tr->ffitype, tr->declared);
+  // Printf(stderr, "## FWD %s, %d\n", tr->ffitype, tr->declared);
   f_rkttypes->addDep(tr->decl);
   f_rkttypes->addDep(tr->ptrdecl);
 }
@@ -593,7 +592,7 @@ int RACKET::enumDeclaration(Node *n) {
     return SWIG_NOWRAP;
 
   String *name = Getattr(n, "sym:name");
-  Printf(stderr, "## enum %s\n", name);
+  // Printf(stderr, "## enum %s\n", name);
   TypeRecord *tr = getTypeRecord(name, "enum");
   String *tdname = Getattr(n, "tdname");
   if (tdname) { registerTypeRecord(tdname, tr); }
@@ -623,7 +622,7 @@ int RACKET::enumDeclaration(Node *n) {
 
 int RACKET::classDeclaration(Node *n) {
   String *name = Getattr(n, "sym:name");
-  Printf(stderr, "## class %s\n", name);
+  // Printf(stderr, "## class %s\n", name);
   String *kind = Getattr(n, "kind");
   TypeRecord *tr = getTypeRecord(name, kind);
   int result;
@@ -932,14 +931,18 @@ void write_block(File *out, String *s, int indent, int subs, ...) {
 String *adjust_block(String *tmin, int indent) {
   char *s = Char(tmin);
   int len = Len(tmin);
-  while (isspace(s[0]) || (s[0] == '\n')) { s++; len--; } // FIXME: is isspace('\n') true?
+  int existing_indent = 0;
+  while (isspace(s[0]) || (s[0] == '\n')) { // FIXME: is isspace('\n') true?
+    if (s[0] == '\n') { existing_indent = 0; } else { existing_indent++; }
+    s++; len--;
+  }
   while (isspace(s[len - 1]) || (s[len - 1] == '\n')) { len--; }
   String *tm = NewString("");
   Write(tm, s, len);
   if (indent >= 0) {
     String *indentation = NewString("\n");
-    indent = indent - 2; // expected starting indentation
-    while (indent--) { Printf(indentation, " "); }
+    indent = indent - existing_indent;
+    while (indent > 0) { Printf(indentation, " "); indent--; }
     Replaceall(tm, "\n", indentation);
   }
   return tm;
