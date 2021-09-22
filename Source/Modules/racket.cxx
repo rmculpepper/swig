@@ -18,9 +18,6 @@
 /* TODO:
  * - add variables to "rktin" typemap rhss, like $ffitype ?
  * - better, more consistent C->Racket expression handling
- *   - detect #define right-hand sides that are not legal Racket
- *     eg, "#define X (Y|0x01)"
- *   - array dimensions
  * - allow customizing provided names?
  *   or put wrappers in submodule, let interface file re-export, add contracts, etc?
  * - fix memory leaks
