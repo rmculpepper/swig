@@ -676,6 +676,10 @@ int RACKET::classDeclaration(Node *n) {
         SWIG_exit(EXIT_FAILURE);
       }
     }
+    if (first) {
+      // No fields. Add a fake zero-sized field to make Racket happy.
+      Printf(out, "[__fake__ (_array _byte 0)]");
+    }
     Printf(out, ")");
     write_wrapper_options(out, Getattr(n, "feature:struct-options"), 2,
                           tr->ffitype, Getattr(n, "name"));
