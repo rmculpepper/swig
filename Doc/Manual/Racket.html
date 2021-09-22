@@ -309,13 +309,10 @@ struct point_st;
 
 <h3 id="typedefs">Typedefs</h3>
 
-<p>The handling of a typedef depends on whether the right-hand side is a known
-struct type or not.</p>
-
-<p>A typedef to a known struct type is handled as follows:</p>
+<p>A typedef to a struct type is handled as follows:</p>
 
 <div class="code"><pre>
-typedef struct point_st Point;  // where struct point_st is already declared
+typedef struct point_st Point;
 </pre></div>
 <div class="indent"><pre>=&gt;</pre></div>
 <div class="targetlang"><pre>
@@ -323,25 +320,9 @@ typedef struct point_st Point;  // where struct point_st is already declared
 (define _Point* _point_st-pointer/null)
 </pre></div>
 
-<p>If the typedef occurs before the declaration of the struct type, the code
-above would attempt to use the <code>_point_st</code>
-and <code>_point_st-pointer/null</code> variables before their definitions. So
-instead, the following code is produced:</p>
-
-<div class="code"><pre>
-typedef struct point_st Point;  // where struct point_st is not yet declared
-</pre></div>
-<div class="indent"><pre>=&gt;</pre></div>
-<div class="targetlang"><pre>
-(define _Point  (_FIXME #| _point_st |#))
-(define _Point* (_cpointer/null 'point_st) #| _point_st-pointer/null |#)
-</pre></div>
-
-<p>This can be fixed by inserting a definition of <code>_FIXME</code> into the
-"rktheader" section, or it can be fixed manually by moving the struct-generated
-definition before the typedef-generated definitions and uncommenting the struct
-type names. If <code>_Point</code> is not used, this code could also be fixed by
-commenting out or removing its definition.</p>
+<p>If the typedef occurs before the declaration of the struct type, the
+translator attempts to reorder the declarations so that the Racket types are
+defined before they are used.</p>
 
 <p>A typedef to an anonymous struct declaration is handled as if the typedef
 name replaced the struct name:</p>
@@ -357,8 +338,8 @@ typedef struct { int x, y, z; } Point3d;
 <p>In all of the previous cases, the typedef name is recorded as a known struct
 type.</p>
 
-<p>If the target of a typedef is not a known struct type, then the translation
-does not include pointer types:</p>
+<p>If the target of a typedef is not a struct type, then the translation does
+not include the pointer type:</p>
 
 <div class="code"><pre>
 typedef int errcode;
@@ -381,6 +362,9 @@ union shape_t { rectangle_t rect ; circle_t circ; };
 (define _shape_t (_union _rectangle_t _circle_t))
 </pre></div>
 
+<p>An incomplete union declaration is handled similarly to an incomplete struct
+declaration, except that no pointer type is defined.</p>
+
 <h3 id="enumeration-types">Enumeration types</h3>
 
 <p>A C enumeration declaration is translated to a Racket definition
@@ -392,6 +376,16 @@ enum direction_t { north, east, south, west, up = 100 };
 <div class="indent"><pre>=&gt;</pre></div>
 <div class="targetlang"><pre>
 (define _direction_t (_enum &#39;(north east south west up = 100)))
+</pre></div>
+
+<p>An incomplete enum declaration is handled as an alias to an integer type.</p>
+
+<div class="code"><pre>
+enum places_t;
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _places_t _fixint)
 </pre></div>
 
 <h3 id="pointer-types">Pointer types</h3>
@@ -533,6 +527,8 @@ instead.</p>
 <li><code>rktheader</code>: before the wrappers; define <code>foreign-lib</code>
 and <code>define-foreign</code> here</li>
 
+<li>(anonymous): constants and type definitions are generated here</li>
+
 <li><code>rktwrapper</code>: wrappers are generated here</li>
 
 <li><code>rktinit</code>: extra code after all the wrappers are defined, emitted
@@ -657,6 +653,11 @@ type, change the "rktffi" mapping of the parameter to use
 the <code>_<em>structname</em>-pointer</code> type instead of
 the <code>_<em>structname</em>-pointer/null</code> type.</p>
 
+<p>The "newfree" method has the Racket analogue "rktnewfree", which maps a
+result type to a Racket expressions that evaluates to a deallocator function for
+that type. See "Object
+ownership, <code>%newobject</code>, <code>%delobject</code>" below.</p>
+
 <p>The following typemap methods have no Racket analogue: "typecheck",
 "arginit", "freearg", "newfree", "ret", "memberin", "varin", "varout", and
 "throws".</p>
@@ -681,8 +682,8 @@ foreign function:</p>
 <p>The <code>%newobject</code> and <code>%delobject</code> features are
 supported, but the "rktnewfree" typemap method is used instead of "newfree". The
 "rktnewfree" typemap method maps a result type to a Racket expression specifying
-the <code><em>free_func</em></code> for that type; it defaults to
-the <code>free</code> function. The <code>%newobject</code> feature is
+the <code><em>free_func</em></code> for that type; it defaults to the
+Racket <code>free</code> function. The <code>%newobject</code> feature is
 translated to <code>#:wrap (allocator <em>free_func</em>)</code>. The
 <code>%delobject</code> feature is translated to <code>#:wrap
 (deallocator)</code>.</p>
@@ -704,7 +705,7 @@ Point *make_point();
   #:wrap (allocator delete_point))
 </pre></div>
 
-<p>This will cause Racket to call the Racket <code>free</code> function on the
+<p>This will cause Racket to call the <code>delete_point</code> function on the
 allocated object when the Racket cpointer wrapping it is garbage-collected. See
 the documentation for <code>ffi/unsafe/alloc</code> for more information.</p>
 
