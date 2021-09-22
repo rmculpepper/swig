@@ -404,7 +404,8 @@ int RACKET::functionWrapper(Node *n) {
   Swig_typemap_attach_parms("rktin", pl, 0);
   Swig_typemap_attach_parms("rktargout", pl, 0);
 
-  String *restype = getRacketType(n, Getattr(n, "type"), NULL);
+  String *result_ctype = Getattr(n, "type");
+  String *restype = getRacketType(n, result_ctype, NULL);
   List *argouts = NewList();
   String *result_expr = Getattr(n, "feature:fun-result");
 
@@ -435,6 +436,16 @@ int RACKET::functionWrapper(Node *n) {
   }
   if (Strcmp(func_name, cname)) {
     Printf(out, "\n  #:c-id %s", cname);
+  }
+  if (GetFlag(n, "feature:new")) {
+    String *free_fun = Swig_typemap_lookup("rktnewfree", n, result_ctype, NULL);
+    if (free_fun) {
+      Printf(out, "\n  #:wrap (allocator %s)", free_fun);
+    } else {
+      Printf(out, "\n  #:wrap (allocator free)");
+    }
+  } else if (GetFlag(n, "feature:del")) {
+    Printf(out, "\n  #:wrap (deallocator)");
   }
   write_wrapper_options(out, Getattr(n, "feature:fun-options"), 2, func_name, cname);
   Printf(out, ")\n\n");

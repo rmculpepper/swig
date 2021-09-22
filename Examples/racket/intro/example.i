@@ -77,7 +77,7 @@ extern int add_alpha_chars(char *s, int len);
 // Structs
 
 %insert("rktheader") %{
-(require racket/struct ffi/unsafe/alloc)
+(require racket/struct)
 %}
 
 // Use the struct-options feature to add properties like printing and
@@ -105,7 +105,8 @@ typedef struct point_st Point;
 
 // Use Racket's ffi/unsafe/alloc library to automatically free
 // allocated objects when the wrapping pointer is GC'd.
-%feature("fun-options") flip_point "#:wrap (allocator free)";
+// %feature("fun-options") flip_point "#:wrap (allocator free)";
+%newobject flip_point;
 
 extern Point *flip_point(Point *p);
 
@@ -113,8 +114,11 @@ extern Point *flip_point(Point *p);
 
 extern int point_counter;
 
-%feature("fun-options") delete_point "#:wrap (deallocator)";
-%feature("fun-options") new_point "#:wrap (allocator delete_point)";
+// %feature("fun-options") delete_point "#:wrap (deallocator)";
+%delobject delete_point;
+// %feature("fun-options") new_point "#:wrap (allocator delete_point)";
+%newobject new_point;
+%typemap(rktnewfree) Point * "delete_point";
 
 extern void delete_point(Point *p);
 extern Point *new_point();

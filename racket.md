@@ -1,33 +1,5 @@
 # Issues:
 
-## forward references to enum types
-
-Example:
-
-    enum foo;
-    int f(enum foo v);
-    enum foo { a, b, c };
-
-PREFER: generate one _foo definition, reorder by hand (or automatically?)
-
-AUTO: define _FWD-foo = _fixint, use _FWD-foo, then define _foo
-
-## forward reference to union type
-
-## forward reference to struct type
-
-Example:
-
-    struct foo;
-    int f(struct foo *v);
-    struct foo { int x, y; };
-
-PREFER: generate one _foo definition, reorder by hand (or automatically?)
-
-AUTO: define _FWD-foo = _void (or omit), _FWD-foo* = (_cpointer/null 'foo),
-  use _FWD-foo*, then define _foo
-
-
 ## defined in other lib
 
 How should we communicate that a type is defined in another module?

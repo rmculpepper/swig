@@ -87,7 +87,7 @@
 
 %insert("rktheader") %{
 #lang racket/base
-(require ffi/unsafe ffi/unsafe/define)
+(require ffi/unsafe ffi/unsafe/define ffi/unsafe/alloc)
 (provide (protect-out (all-defined-out)))
 
 (module ffi-type-util racket/base

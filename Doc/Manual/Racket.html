@@ -678,18 +678,44 @@ foreign function:</p>
 
 <h3 id="object-ownership-newobject-delobject-14.2">Object ownership, <code>%newobject</code>, <code>%delobject</code> (14.2)</h3>
 
-<p>The <code>%newobject</code> and <code>%delobject</code> directives are not
-supported. Use the "fun-options" feature and
-Racket’s <code>ffi/unsafe/alloc</code> library instead. For example:</p>
+<p>The <code>%newobject</code> and <code>%delobject</code> features are
+supported, but the "rktnewfree" typemap method is used instead of "newfree". The
+"rktnewfree" typemap method maps a result type to a Racket expression specifying
+the <code><em>free_func</em></code> for that type; it defaults to
+the <code>free</code> function. The <code>%newobject</code> feature is
+translated to <code>#:wrap (allocator <em>free_func</em>)</code>. The
+<code>%delobject</code> feature is translated to <code>#:wrap
+(deallocator)</code>.</p>
 
 <div class="code"><pre>
-%feature(&quot;fun-options&quot;) blah &quot;#:wrap (allocator free)&quot;
-Foo *blah() { return new Foo(); }
+%delobject delete_point;
+%newobject make_point;
+%typemap(rktnewfree) Point* "delete_point";
+void delete_point(Point *p);
+Point *make_point();
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define-foreign delete_point
+  (_fun [p : _Point*] -> _void)
+  #:wrap (deallocator))
+(define-foreign make_point
+  (_fun -> _Point*)
+  #:wrap (allocator delete_point))
 </pre></div>
 
 <p>This will cause Racket to call the Racket <code>free</code> function on the
-allocated object when the Racket cpointer wrapping it is garbage-collected. The
+allocated object when the Racket cpointer wrapping it is garbage-collected. See
 the documentation for <code>ffi/unsafe/alloc</code> for more information.</p>
+
+<p>An alternative to <code>%newobject</code> and <code>%delobject</code> is to
+use the "fun-options" feature to include a <code>#:wrap</code> option with the
+appropriate allocator/deallocator wrapper. For example:</p>
+
+<div class="code"><pre>
+%feature(&quot;fun-options&quot;) delete_point &quot;#:wrap (deallocator)&quot;
+%feature(&quot;fun-options&quot;) make_point &quot;#:wrap (allocator delete_point)&quot;
+</pre></div>
 
 <h3 id="contracts-contract-15">Contracts, <code>%contract</code> (15)</h3>
 
