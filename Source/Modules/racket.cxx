@@ -232,6 +232,10 @@ static String *strip_parens(String *string);
 static void writeFunPrefix(File *out, String *prefix, int indent);
 static void writeIndent(String *out, int indent, int moreindent);
 
+enum define_types_t { define_none = 0, define_main = 1, define_ptr = 2, define_all = 3 };
+
+static enum define_types_t getDefineTypesMode(Node *n);
+
 // ============================================================
 // Racket Language Module
 
@@ -968,6 +972,19 @@ void writeIndent(String *out, int indent, int moreindent) {
     }
   } else {
     Printf(out, " ");
+  }
+}
+
+enum define_types_t getDefineTypesMode(Node *n) {
+  String *m = Getattr(n, "feature:DefineTypesMode");
+  if (!m || !Strcmp(m, "all")) {
+    return define_all;
+  } else if (!Strcmp(m, "pointer")) {
+    return define_ptr;
+  } else if (!Strcmp(m, "none")) {
+    return define_none;
+  } else {
+    return define_all;
   }
 }
 
