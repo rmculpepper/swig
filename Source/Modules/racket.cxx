@@ -115,13 +115,11 @@ public:
 
   void addIndyPtrType() {
     this->ptrtype = NewStringf("%s*", this->ffitype);
-    this->ptrdecl = new DeclItem();
-    this->ptrdecl->joinwith = this->decl;
   }
 
   void setStructDefined() {
     this->ptrtype = NewStringf("%s-pointer/null", this->ffitype);
-    this->ptrdecl = this->decl; // same declaration defines both
+    this->ptrdecl->addDep(this->decl); // same declaration defines both
   }
 
   TypeRecord(String *ctype) {
@@ -150,16 +148,16 @@ public:
     } else {
       this->ptrtype = NULL;
     }
-
     this->decl = new DeclItem();
+    this->ptrdecl = new DeclItem();
+    this->ptrdecl->joinwith = this->decl;
+
     Printf(this->decl->str, ";; Incomplete or missing declaration for %s\n", this->ctype);
     if (this->isEnum()) {
       Printf(this->decl->str, "(define %s _fixint)\n", this->ffitype);
     } else {
       Printf(this->decl->str, "(define %s (_FIXME #| %s |#))\n", this->ffitype, this->ctype);
     }
-
-    this->ptrdecl = NULL;
   }
 };
 
