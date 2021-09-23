@@ -880,17 +880,21 @@ String *RACKET::getRacketType(Node *n, SwigType *ty0, DeclItem *client) {
     if (!inner && SwigType_isfunction(ty)) {
       result = getRacketType(n, ty, client);
     } else {
-      if (!inner) {
-        inner = getRacketType(n, ty, SwigType_issimple(ty) ? NULL : client);
+      TypeRecord *innertr;
+      if (!inner && SwigType_issimple(ty)) {
+        innertr = getTypeRecord(SwigType_str(ty, 0));
+      } else {
+        inner = getRacketType(n, ty, client);
+        innertr = getRacketTypeRecord(inner);
       }
-      TypeRecord *innertr = getRacketTypeRecord(inner);
       if (innertr && innertr->ptrtype) {
         result = Copy(innertr->ptrtype);
         if (client) { client->addDep(innertr->ptrdecl); }
       } else {
-        result = NewStringf("(_pointer-to %s)", inner);
+        result = NewStringf("(_pointer-to %s)", innertr->ffitype);
+        if (client) { client->addDep(innertr->decl); }
       }
-      Delete(inner);
+      if (inner) { Delete(inner); }
     }
   }
   else if (SwigType_issimple(ty)) {
