@@ -39,10 +39,12 @@ public:
   String *str;  // Racket code to emit
   List *deps;   // list of { String* | NewVoid(DeclItem*) }
   int inserted;
+  int omit;
   DeclItem *joinwith;
 
   DeclItem() {
     reset();
+    this->omit = 0;
   }
 
   void reset() {
@@ -69,7 +71,7 @@ public:
   }
 
   void *writek(File *out, void *prev) {
-    if (!inserted) {
+    if (!(inserted || omit)) {
       inserted = 1;
       for (Iterator iter = First(deps); iter.item; iter = Next(iter)) {
         if (DohIsString(iter.item)) {
@@ -94,11 +96,13 @@ public:
 // ============================================================
 // Type Records
 
-enum declared_t { undeclared, forward_declared, fully_declared };
+enum declared_t { undeclared, implicitly_declared, forward_declared, fully_declared };
+enum define_types_t { define_none = 0, define_main = 1, define_ptr = 2, define_all = 3 };
 
 class TypeRecord {
 public:
   enum declared_t declared;
+  enum define_types_t dtmode;
   String *ctype;
   const char *ckind;
   String *cname;
@@ -113,18 +117,22 @@ public:
   int isEnum() { return !Strcmp(ckind, "enum"); }
   int isUnion() { return !Strcmp(ckind, "union"); }
 
-  void addIndyPtrType() {
-    this->ptrtype = NewStringf("%s*", this->ffitype);
+  void setDefineTypesMode(enum define_types_t dtmode) {
+    Printf(stderr, "DTM %s is %x\n", this->ffitype, dtmode);
+    this->dtmode = dtmode;
+    this->decl->omit = !(dtmode & define_main);
+    this->ptrdecl->omit = !(dtmode & define_ptr);
   }
 
-  void setStructDefined() {
-    this->ptrtype = NewStringf("%s-pointer/null", this->ffitype);
-    this->ptrdecl->addDep(this->decl); // same declaration defines both
+  void resetDecls() {
+    this->decl->reset();
+    this->ptrdecl->reset();
   }
 
   TypeRecord(String *ctype) {
     char *str = Char(ctype);
     this->declared = undeclared;
+    this->dtmode = define_all;
     this->ctype = Copy(ctype);
     if (!Strncmp(str, "struct ", strlen("struct "))) {
       this->ckind = "struct";
@@ -208,7 +216,7 @@ private:
   TypeRecord *getTypeRecord(String *type, const String_or_char *prefix = NULL);
   void registerTypeRecord(String *ctype, TypeRecord *tr);
   TypeRecord *getRacketTypeRecord(String *ffitype);
-  void declareForwardType(TypeRecord *tr);
+  void declareForwardType(TypeRecord *tr, Node *n);
   void writeFunParams(File *out, Node *n, ParmList *pl, int indent, List *argouts, DeclItem *client);
   String *getMappedType(Node *n, SwigType *ty);
   String *getRacketType(Node *n, SwigType *ty, DeclItem *di = NULL);
@@ -218,6 +226,7 @@ private:
   Hash *ffitype_records;     // eg "_point" -> new TypeRecord(....)
   List *fixup_list;          // eg, ["struct point_st", "enum color"]
   struct member_ctx *mctx;
+  enum define_types_t default_dtmode;
 };
 
 static void write_block(File *out, String *s, int indent, int subs, ...);
@@ -229,8 +238,6 @@ static String *strip_parens(String *string);
 
 static void writeFunPrefix(File *out, String *prefix, int indent);
 static void writeIndent(String *out, int indent, int moreindent);
-
-enum define_types_t { define_none = 0, define_main = 1, define_ptr = 2, define_all = 3 };
 
 static enum define_types_t getDefineTypesMode(Node *n);
 
@@ -250,6 +257,7 @@ void RACKET::main(int argc, char *argv[]) {
   ffitype_records = NewHash();
   fixup_list = NewList();
   mctx = NULL;
+  default_dtmode = define_all;
 
   for (i = 1; i < argc; i++) {
     if (!strcmp(argv[i], "-help")) {
@@ -537,30 +545,28 @@ int RACKET::typedefHandler(Node *n) {
   String *tdname = Getattr(n, "name");
   // Printf(stderr, "## typedef %s\n", tdname);
   TypeRecord *tdtr = getTypeRecord(tdname);
+  enum define_types_t dtmode = getDefineTypesMode(n);
 
   if (tdtr->isKnown()) {
     // For example, maybe tdname is already declared as a struct/enum/union:
     //   typedef struct point_st Point;
   } else {
+    tdtr->setDefineTypesMode(dtmode);
+    tdtr->resetDecls();
     SwigType *ty = Getattr(n, "type");
-    tdtr->decl->reset();
+    enum define_types_t saved_dtmode = default_dtmode;
+    default_dtmode = dtmode;
     String *rhsrtype = getRacketType(n, ty, tdtr->decl);
+    default_dtmode = saved_dtmode;
     TypeRecord *rhs = getRacketTypeRecord(rhsrtype);
     if (Strcmp(tdtr->ffitype, rhsrtype)) {
       Printf(tdtr->decl->str, "(define %s %s)\n", tdtr->ffitype, rhsrtype);
-      if (1) {
-        // FIXME: It is common to "typedef struct point_st Point" and then only
-        // use "Point*", leaving "struct point_st" incomplete. That is, ptrdecl
-        // is used, but decl is unused. Add option to omit main decl if unused.
-        // BUT then wrappers need to trigger deps too :(
-        f_rkttypes->addDep(tdtr->decl);
-      }
+      f_rkttypes->addDep(tdtr->decl);
     } else {
       // If same names, just omit to avoid (define _Type _Type).
     }
-
     if (rhs && rhs->ptrtype) {
-      tdtr->addIndyPtrType();
+      tdtr->ptrtype = NewStringf("%s*", tdtr->ffitype);
       Printf(tdtr->ptrdecl->str, "(define %s %s)\n", tdtr->ptrtype, rhs->ptrtype);
       tdtr->ptrdecl->addDep(rhs->ptrdecl);
       f_rkttypes->addDep(tdtr->ptrdecl);
@@ -577,7 +583,7 @@ int RACKET::classforwardDeclaration(Node *n) {
   if (0) {
     Printf(stderr, "forward declaration of %s :: %s\n", name, kind);
   }
-  declareForwardType(getTypeRecord(name, kind));
+  declareForwardType(getTypeRecord(name, kind), n);
   return SWIG_OK;
 }
 
@@ -587,14 +593,17 @@ int RACKET::enumforwardDeclaration(Node *n) {
   if (0) {
     Printf(stderr, "forward declaration of %s :: enum\n", name);
   }
-  declareForwardType(getTypeRecord(name, "enum"));
+  declareForwardType(getTypeRecord(name, "enum"), n);
   return SWIG_OK;
 }
 
-void RACKET::declareForwardType(TypeRecord *tr) {
-  // Printf(stderr, "## FWD %s, %d\n", tr->ffitype, tr->declared);
-  f_rkttypes->addDep(tr->decl);
-  f_rkttypes->addDep(tr->ptrdecl);
+void RACKET::declareForwardType(TypeRecord *tr, Node *n) {
+  if (tr->declared < forward_declared) {
+    tr->setDefineTypesMode(getDefineTypesMode(n));
+    f_rkttypes->addDep(tr->decl);
+    f_rkttypes->addDep(tr->ptrdecl);
+    tr->declared = forward_declared;
+  }
 }
 
 int RACKET::enumDeclaration(Node *n) {
@@ -606,8 +615,10 @@ int RACKET::enumDeclaration(Node *n) {
   TypeRecord *tr = getTypeRecord(name, "enum");
   String *tdname = Getattr(n, "tdname");
   if (tdname) { registerTypeRecord(tdname, tr); }
-  int first = 1;
+  if (tr->isDefined()) return SWIG_OK;
+  tr->setDefineTypesMode(getDefineTypesMode(n));
 
+  int first = 1;
   tr->decl->reset();
   String *out = tr->decl->str;
   Printf(out, "(define %s\n", tr->ffitype);
@@ -648,12 +659,15 @@ int RACKET::classDeclaration(Node *n) {
   mctx = my_mctx.prev;
 
   if (result != SWIG_OK) return result;
+  if (tr->isDefined()) return SWIG_OK;
+  tr->setDefineTypesMode(getDefineTypesMode(n));
 
   if (!Strcmp(kind, "struct")) {
-    tr->decl->reset();
-    String *out = tr->decl->str;
+    tr->resetDecls();
+    tr->ptrtype = NewStringf("%s-pointer/null", tr->ffitype);
+    tr->ptrdecl->addDep(tr->decl); // same declaration defines both
     tr->declared = fully_declared;
-    tr->setStructDefined();
+    String *out = tr->decl->str;
 
     int first = 1;
     Printf(out, "(define-cstruct %s\n", tr->ffitype);
@@ -691,7 +705,7 @@ int RACKET::classDeclaration(Node *n) {
     return SWIG_OK;
   }
   else if (!Strcmp(kind, "union")) {
-    tr->decl->reset();
+    tr->resetDecls();
     String *out = tr->decl->str;
 
     int first = 1;
@@ -898,13 +912,14 @@ String *RACKET::getRacketType(Node *n, SwigType *ty0, DeclItem *client) {
     }
   }
   else if (SwigType_issimple(ty)) {
-    String *str = SwigType_str(ty, 0);
-    TypeRecord *tr = getTypeRecord(str);
+    TypeRecord *tr = getTypeRecord(SwigType_str(ty, 0));
     if (tr->declared == undeclared) {
-      declareForwardType(tr);
+      tr->setDefineTypesMode(default_dtmode);
+      tr->declared = implicitly_declared;
+      f_rkttypes->addDep(tr->decl);
     }
-    result = Copy(tr->ffitype);
     if (client) { client->addDep(tr->decl); }
+    result = Copy(tr->ffitype);
   }
   else {
     result = NewStringf("(_FIXME #| %s |#)", SwigType_str(ty, 0));
