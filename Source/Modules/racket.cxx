@@ -118,7 +118,6 @@ public:
   int isUnion() { return !Strcmp(ckind, "union"); }
 
   void setDefineTypesMode(enum define_types_t dtmode) {
-    Printf(stderr, "DTM %s is %x\n", this->ffitype, dtmode);
     this->dtmode = dtmode;
     this->decl->omit = !(dtmode & define_main);
     this->ptrdecl->omit = !(dtmode & define_ptr);
@@ -552,7 +551,6 @@ int RACKET::typedefHandler(Node *n) {
     //   typedef struct point_st Point;
   } else {
     tdtr->setDefineTypesMode(dtmode);
-    tdtr->resetDecls();
     SwigType *ty = Getattr(n, "type");
     enum define_types_t saved_dtmode = default_dtmode;
     default_dtmode = dtmode;
@@ -898,15 +896,15 @@ String *RACKET::getRacketType(Node *n, SwigType *ty0, DeclItem *client) {
       if (!inner && SwigType_issimple(ty)) {
         innertr = getTypeRecord(SwigType_str(ty, 0));
       } else {
-        inner = getRacketType(n, ty, client);
+        if (!inner) { inner = getRacketType(n, ty, client); }
         innertr = getRacketTypeRecord(inner);
       }
       if (innertr && innertr->ptrtype) {
         result = Copy(innertr->ptrtype);
         if (client) { client->addDep(innertr->ptrdecl); }
       } else {
-        result = NewStringf("(_pointer-to %s)", innertr->ffitype);
-        if (client) { client->addDep(innertr->decl); }
+        result = NewStringf("(_pointer-to %s)", inner);
+        if (client && innertr) { client->addDep(innertr->decl); }
       }
       if (inner) { Delete(inner); }
     }
