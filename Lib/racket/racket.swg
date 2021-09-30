@@ -11,6 +11,10 @@
 #include <stdlib.h>
 %}
 
+#define %DefineNoTypes      %feature("DefineTypesMode", "none")
+#define %DefinePointerTypes %feature("DefineTypesMode", "pointer")
+#define %DefineAllTypes     %feature("DefineTypesMode", "all")
+#define %ClearDefineTypes   %feature("DefineTypesMode", "")
 
 /* Integer types */
 

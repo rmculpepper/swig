@@ -420,6 +420,53 @@ int *               =&gt;  (_pointer-to _int)  =  _pointer
 <p>Qualifiers like <code>const</code> are discarded. The generated Racket code
 does not respect mutation restrictions based on <code>const</code>.</p>
 
+<h3 id="suppressing-type-definitions">Suppressing Type Definitions</h3>
+
+<p>The "DefineTypesMode" feature controls whether a type declaration results in
+a Racket type definition. Use this feature, for example, to suppress type
+definitions for types already imported from another Racket module. The
+"DefineTypesMode" feature accepts three possible values:
+
+<ul>
+
+<li>"all" or unset (default): A type declaration produces definitions of both
+the main type and (if applicable) the associated pointer type.</li>
+
+<li>"pointer": A type declaration produces only a definition of the associated
+pointer type, if applicable. If the declaration would not normally produce a
+pointer type definition, it produces nothing in this mode.</li>
+
+<li>"none": A type declaration produces no definitions.</li>
+
+</ul>
+
+<p>The feature value for the <em>first</em> declaration of the type (complete or
+incomplete) applies to all subsequent declarations. It also applies to types in
+the target of a <code>typedef</code> declaration, if those types have not
+previously been declared.</p>
+
+<p>Use the <code>%DefineNoTypes</code>, <code>%DefinePointerTypes</code>,
+and <code>%DefineAllTypes</code> macros to adjust the feature value.</p>
+
+<div class="code"><pre>
+%DefineNoTypes;
+struct nodef_st;
+typedef struct nodef_st NoDef;
+typedef struct nodef2_st NoDef2;      // also affects undeclared "struct nodef2_st"
+%DefinePointerTypes;
+struct onlyptr_st;
+typedef struct onlyptr_st OnlyPtr;
+typedef struct onlyptr2_st OnlyPtr2;  // also affects undeclared "struct onlyptr2_st"
+%DefineAllTypes;
+struct nodef_st {int x, y;};  // already declared w/ %DefineNoTypes
+struct nodef2_st {int z;};    // already declared w/ %DefineNoTypes
+</pre></div>
+<div class="indent"><pre>=&gt;</pre></div>
+<div class="targetlang"><pre>
+(define _OnlyPtr* (_cpointer/null 'onlyptr_st))
+(define _OnlyPtr2* (_cpointer/null 'onlyptr2_st))
+</pre></div>
+
 <h2 id="supported-and-unsupported-swig-features">Supported and unsupported Swig features</h2>
 
 <p>This section lists various Swig features and indicates whether the Swig

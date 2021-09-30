@@ -551,6 +551,7 @@ int RACKET::typedefHandler(Node *n) {
     //   typedef struct point_st Point;
   } else {
     tdtr->setDefineTypesMode(dtmode);
+    tdtr->resetDecls();
     SwigType *ty = Getattr(n, "type");
     enum define_types_t saved_dtmode = default_dtmode;
     default_dtmode = dtmode;
@@ -614,7 +615,7 @@ int RACKET::enumDeclaration(Node *n) {
   String *tdname = Getattr(n, "tdname");
   if (tdname) { registerTypeRecord(tdname, tr); }
   if (tr->isDefined()) return SWIG_OK;
-  tr->setDefineTypesMode(getDefineTypesMode(n));
+  if (!tr->isKnown()) { tr->setDefineTypesMode(getDefineTypesMode(n)); }
 
   int first = 1;
   tr->decl->reset();
@@ -658,7 +659,7 @@ int RACKET::classDeclaration(Node *n) {
 
   if (result != SWIG_OK) return result;
   if (tr->isDefined()) return SWIG_OK;
-  tr->setDefineTypesMode(getDefineTypesMode(n));
+  if (!tr->isKnown()) { tr->setDefineTypesMode(getDefineTypesMode(n)); }
 
   if (!Strcmp(kind, "struct")) {
     tr->resetDecls();
@@ -902,9 +903,11 @@ String *RACKET::getRacketType(Node *n, SwigType *ty0, DeclItem *client) {
       if (innertr && innertr->ptrtype) {
         result = Copy(innertr->ptrtype);
         if (client) { client->addDep(innertr->ptrdecl); }
+      } else if (innertr) {
+        result = NewStringf("(_pointer-to %s)", innertr->ffitype);
+        if (client) { client->addDep(innertr->decl); }
       } else {
         result = NewStringf("(_pointer-to %s)", inner);
-        if (client && innertr) { client->addDep(innertr->decl); }
       }
       if (inner) { Delete(inner); }
     }
